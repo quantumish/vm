@@ -60,10 +60,12 @@ int main(int argc, char** argv)
     }
     FILE* binary = fopen(argv[1], "r");
     reg[R_PC] = 0x0000; // init program counter
+    uint8_t signature; // Avoid file signature shifting everything over by one.
+    fread(&signature, 1, 1, binary);
     for (int i = 0; i < fsize(argv[1]); i++) {
         reg[R_PC]++;
-        uint16_t op;
-        fread(&op, 2, 1, binary);
+        uint8_t op;
+        fread(&op, 1, 1, binary);
         switch (op) {
         case OP_ADD:
             break;
@@ -78,7 +80,7 @@ int main(int argc, char** argv)
         case OP_JMP:
             break;
         default:
-            printf("Bad opcode at %x! Skipping...", i);
+            printf("Bad opcode 0x%02x at 0x%02x! Skipping...\n", op, i);
             break;
         }
     }
