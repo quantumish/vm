@@ -1,7 +1,7 @@
 
-
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -103,11 +103,32 @@ void add(int variant)
     }
 }
 
-void jump()
+void jump(int immsize)
 {
-    int8_t imm8;
-    fread(&imm8, 1, 1, binary);
-    fseek(binary, imm8, SEEK_CUR);
+    if (immsize == 8) {
+        int8_t imm8;
+        fread(&imm8, 1, 1, binary);
+        fseek(binary, imm8, SEEK_CUR);
+        reg[R_IP] -= imm8;
+    }
+    else if (immsize == 16) {
+        int8_t imm16;
+        fread(&imm16, 1, 1, binary);
+        fseek(binary, imm16, SEEK_CUR);
+        reg[R_IP] -= imm16;
+    }
+}
+
+void push(int reg_num)
+{
+    reg[R_SP] -= 2;
+    memory[reg[R_SP]] = reg[reg_num];
+}
+
+void pop(int reg_num)
+{
+    reg[reg_num] = memory[reg[R_SP]];
+    reg[R_SP] += 2;
 }
 
 int main(int argc, char** argv)
@@ -116,6 +137,10 @@ int main(int argc, char** argv)
         printf("Invalid command: need binary file input!\n");
         return 1;
     }
+    // Initialize stack
+    reg[R_BP] = rand() % (UINT16_MAX + 1);
+    reg[R_SP] = reg[R_BP];
+    
     binary = fopen(argv[1], "r");
     //uint8_t signature; // Avoid file signature shifting everything over by one.
     //fread(&signature, 1, 1, binary);
@@ -143,7 +168,37 @@ int main(int argc, char** argv)
             reg[R_IP]++;
             break;
         case 0xEB:
-            jump();
+            jump(8);
+            break;
+        case 0xE9:
+            jump(16);
+            break;
+        case 0x50:
+            push(1);
+            break;
+        case 0x50:
+            push(0);
+            break;
+        case 0x51:
+            push(1);
+            break;
+        case 0x52:
+            push(2);
+            break;
+        case 0x53:
+            push(3);
+            break;
+        case 0x54:
+            push(4);
+            break;
+        case 0x55:
+            push(5);
+            break;
+        case 0x56:
+            push(6);
+            break;
+        case 0x57:
+            push(7);
             break;
         default:
             printf("Bad opcode 0x%02x at 0x%02x! Skipping...\n", op, reg[R_IP]);
