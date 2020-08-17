@@ -89,11 +89,46 @@ void add(int variant)
                 reg[modrm & 0b00111000] += reg[modrm & 0b00000111] << 8 >> 8;
             }
         }
-        else printf("Indirect adressing not supported yet. Skipping operation.\n");
+        else if ((modrm | 0b00111111) == 0b00111111) {
+            if ((modrm & 0b00000111) == 0b00000111) reg[modrm & 0b00111000] += memory[reg[R_BX]];
+            else if ((modrm & 0b00000111) == 0b000000110) {
+                uint16_t disp16;
+                fread(&disp16, 2, 1, binary);
+                reg[modrm & 0b00111000] += memory[reg[disp16]];
+                reg[R_IP] += 2;
+            }
+            else if ((modrm & 0b00000111) == 0b000000101) reg[modrm & 0b00111000] += memory[reg[R_DI]];
+            else if ((modrm & 0b00000111) == 0b000000100) reg[modrm & 0b00111000] += memory[reg[R_SI]];
+            else if ((modrm & 0b00000111) == 0b000000011) reg[modrm & 0b00111000] += memory[reg[R_BP] + reg[R_DI]];
+            else if ((modrm & 0b00000111) == 0b000000010) reg[modrm & 0b00111000] += memory[reg[R_BP] + reg[R_SI]];
+            else if ((modrm & 0b00000111) == 0b000000001) reg[modrm & 0b00111000] += memory[reg[R_BX] + reg[R_DI]];
+            else if ((modrm & 0b00000111) == 0b000000000) reg[modrm & 0b00111000] += memory[reg[R_BX] + reg[R_SI]];
+        }
+        else if ((modrm & 0b01000000) == 0b01000000) {
+            uint16_t disp8;
+            fread(&disp8, 1, 1, binary);
+            int addr;
+            if ((modrm & 0b00000111) == 0b00000111) addr = reg[R_BX];
+            else if ((modrm & 0b00000111) == 0b000000101) addr = reg[R_DI];
+            else if ((modrm & 0b00000111) == 0b000000100) addr = reg[R_SI];
+            else if ((modrm & 0b00000111) == 0b000000011) addr = reg[R_BP] + reg[R_DI];
+            else if ((modrm & 0b00000111) == 0b000000010) addr = reg[R_BP] + reg[R_SI];
+            else if ((modrm & 0b00000111) == 0b000000001) addr = reg[R_BX] + reg[R_DI];
+            else if ((modrm & 0b00000111) == 0b000000000) addr = reg[R_BX] + reg[R_SI];
+            reg[R_IP]++;
+        }
+        else if ((modrm & 0b00000111) == 0b000000110) {
+                uint16_t disp16;
+                fread(&disp16, 2, 1, binary);
+                reg[modrm & 0b00111000] += memory[reg[disp16]];
+                reg[R_IP] += 2;
+        }
+    }
+
     }
     else if (variant == 4) {
         uint16_t imm16;
-        fread(&imm16, 1, 1, binary);
+        fread(&imm16, 2, 1, binary);
         reg[0] += imm16;
     }
     else if (variant == 5) {
@@ -174,9 +209,6 @@ int main(int argc, char** argv)
             jump(16);
             break;
         case 0x50:
-            push(1);
-            break;
-        case 0x50:
             push(0);
             break;
         case 0x51:
@@ -200,6 +232,30 @@ int main(int argc, char** argv)
         case 0x57:
             push(7);
             break;
+        case 0x58:
+            pop(0);
+            break;
+        case 0x59:
+            pop(1);
+            break;
+        case 0x60:
+            pop(2);
+            break;
+        case 0x61:
+            pop(3);
+            break;
+        case 0x62:
+            pop(4);
+            break;
+        case 0x63:
+            pop(5);
+            break;
+        case 0x64:
+            pop(6);
+            break;
+        case 0x65:
+            pop(7);
+            break; 
         default:
             printf("Bad opcode 0x%02x at 0x%02x! Skipping...\n", op, reg[R_IP]);
             break;
