@@ -29,20 +29,9 @@ enum
     R_BP,
     R_SI,
     R_DI,
-    R_PC,
+    R_IP,
     R_COND,
     R_COUNT
-};
-
-// Define opcodes
-enum
-{
-    OP_ADD = 0x01,
-    OP_LDR = 0x10, // Imaginary instruction that is basically just MOV r/m16 r16
-    OP_STR = 0x11, // Imaginary instruction that is basically just MOV r/m16 r16
-    OP_AND = 0x20, // TODO: Figure out right opcode for AND
-    OP_NOT = 0x13, // TODO: Address two-byte opcode problem 
-    OP_JMP = 0xe9
 };
 
 // Define condition flag enums
@@ -56,6 +45,8 @@ enum
 // Staying 16 bit for now
 uint16_t memory[UINT16_MAX+1];
 uint16_t reg[R_COUNT];
+
+FILE* binary;
 
 // Simple file size detector via https://stackoverflow.com/questions/8236/how-do-you-determine-the-size-of-a-file-in-c
 off_t fsize(const char *filename) {
@@ -86,7 +77,7 @@ uint16_t sign_extend(uint16_t x, int bit_count)
     return x;
 }
 
-void add(FILE* binary, int variant)
+void add(int variant)
 {
     if (variant < 2) {
         uint8_t modrm;
@@ -112,52 +103,50 @@ void add(FILE* binary, int variant)
     }
 }
 
+void jump()
+{
+    int8_t imm8;
+    fread(&imm8, 1, 1, binary);
+    fseek(binary, imm8, SEEK_CUR);
+}
+
 int main(int argc, char** argv)
 {
     if (argc < 2) {
         printf("Invalid command: need binary file input!\n");
         return 1;
     }
-    FILE* binary = fopen(argv[1], "r");
-    reg[R_PC] = 0x0000; // init program counter
+    binary = fopen(argv[1], "r");
     //uint8_t signature; // Avoid file signature shifting everything over by one.
     //fread(&signature, 1, 1, binary);
     reg[R_AX] = 1;
     reg[R_CX] = 1;
-    for (int i = 0; i < fsize(argv[1]); i++) {
-        reg[R_PC]++;
+    for (reg[R_IP] = 0x0000; reg[R_IP] < fsize(argv[1]); reg[R_IP]++) {
         uint8_t op;
         fread(&op, 1, 1, binary);
         printf("Read opcode 0x%02x\n", op);
         switch (op) {
         case 0x00:
-            add(binary,0);
-            i++;
+            add(0);
+            reg[R_IP]++;
             break;
         case 0x01:
-            add(binary,1);
-            i++;
+            add(1);
+            reg[R_IP]++;
             break;
         case 0x04:
-            add(binary,4);
-            i+=2;
+            add(4);
+            reg[R_IP]+=2;
             break;
         case 0x05:
-            add(binary,5);
-            i++;
+            add(5);
+            reg[R_IP]++;
             break;
-        case OP_LDR:
-            break;
-        case OP_STR:
-            break;
-        case OP_AND:
-            break;
-        case OP_NOT:
-            break;
-        case OP_JMP:
+        case 0xEB:
+            jump();
             break;
         default:
-            printf("Bad opcode 0x%02x at 0x%02x! Skipping...\n", op, i);
+            printf("Bad opcode 0x%02x at 0x%02x! Skipping...\n", op, reg[R_IP]);
             break;
         }
         printf("AX contains the decimal value %d\n", reg[R_AX]);
