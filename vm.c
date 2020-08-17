@@ -77,18 +77,43 @@ uint16_t sign_extend(uint16_t x, int bit_count)
     return x;
 }
 
-void add(int variant)
+void add(uint16_t* a, uint16_t b)
+{
+    *a += b;
+}
+
+void sub(uint16_t* a, uint16_t b)
+{
+    *a += b;
+}
+
+void and(uint16_t* a, uint16_t b)
+{
+    *a &= b;
+} 
+ 
+void or(uint16_t* a, uint16_t b)
+{
+    *a |= b;
+}
+
+void xor(uint16_t* a, uint16_t b)
+{
+    *a ^= b;
+}
+
+void std_op(void(*op)(uint16_t*, uint16_t), int variant)
 {
     if (variant == 5) {
         uint16_t imm16;
         fread(&imm16, 2, 1, binary);
-        reg[0] += imm16;
+        (*op)(&reg[0], imm16);
         reg[R_IP]+=2;
     }
     else if (variant == 4) {
         uint8_t imm8;
         fread(&imm8, 1, 1, binary);
-        reg[0] += sign_extend(imm8, 8);
+        (*op)(&reg[0], sign_extend(imm8, 8));
         reg[R_IP]++;
     }
     else if (variant < 4) {
@@ -97,10 +122,10 @@ void add(int variant)
         reg[R_IP]++;
         if ((modrm & 0b11000000) == 0b11000000) {
             // TODO: Check that 8 bit carries dont happen
-            if (variant == 1) reg[modrm & 0b00000111] += reg[modrm & 0b00111000] << 8 >> 8;
-            else if (variant == 2) reg[modrm & 0b00000111] += reg[modrm & 0b00111000];
-            else if (variant == 3) reg[modrm & 0b00111000] += reg[modrm & 0b00000111] << 8 >> 8;
-            else if (variant == 4) reg[modrm & 0b00111000] += reg[modrm & 0b00000111];
+            if (variant == 0) (*op)(&reg[modrm & 0b00000111], reg[modrm & 0b00111000] << 8 >> 8);
+            else if (variant == 1) (*op)(&reg[modrm & 0b00000111], reg[modrm & 0b00111000]);
+            else if (variant == 2) (*op)(&reg[modrm & 0b00111000], reg[modrm & 0b00000111] << 8 >> 8);
+            else if (variant == 3) (*op)(&reg[modrm & 0b00111000], reg[modrm & 0b00000111]);
         }
         else {
             int addr;
@@ -130,10 +155,10 @@ void add(int variant)
                 reg[modrm & 0b00111000] += memory[reg[disp16]];
                 reg[R_IP] += 2;
             }
-            if (variant == 1) memory[addr] += reg[modrm & 0b00111000] << 8 >> 8;
-            else if (variant == 2) memory[addr] += reg[modrm & 0b00111000];
-            else if (variant == 3) reg[modrm & 0b00111000] += memory[addr] << 8 >> 8;
-            else if (variant == 4) reg[modrm & 0b00111000] += memory[addr];
+            if (variant == 0) (*op)(&memory[addr], reg[modrm & 0b00111000] << 8 >> 8);
+            else if (variant == 1) (*op)(&memory[addr], reg[modrm & 0b00111000]); 
+            else if (variant == 2) (*op)(&reg[modrm & 0b00111000], memory[addr] << 8 >> 8);
+            else if (variant == 3) (*op)(&reg[modrm & 0b00111000], memory[addr]);
         }
     }
 }
@@ -187,16 +212,58 @@ int main(int argc, char** argv)
         printf("Read opcode 0x%02x\n", op);
         switch (op) {
         case 0x00:
-            add(0);
+            std_op(add, 0);
             break;
         case 0x01:
-            add(1);
+            std_op(add, 1);
+            break;
+        case 0x02:
+            std_op(add, 2);
+            break;
+        case 0x03:
+            std_op(add, 3);
             break;
         case 0x04:
-            add(4);
+            std_op(add, 4);
             break;
         case 0x05:
-            add(5);
+            std_op(add, 5);
+            break;
+        case 0x08:
+            std_op(or, 0);
+            break;
+        case 0x09:
+            std_op(or, 1);
+            break;
+        case 0x0A:
+            std_op(or, 2);
+            break;
+        case 0x0B:
+            std_op(or, 3);
+            break;
+        case 0x0C:
+            std_op(or, 4);
+            break;
+        case 0x0D:
+            std_op(or, 5);
+            break;
+        case 0x20:
+            std_op(and, 0);
+            break;
+        case 0x21:
+            std_op(and, 1);
+            break;
+        case 0x22:
+            std_op(and, 2);
+            break;
+        case 0x23:
+            std_op(and, 3);
+            break;
+        case 0x24:
+            std_op(and, 4);
+            break;
+        case 0x25:
+            std_op(and, 5);
             break;
         case 0xEB:
             jump(8);
