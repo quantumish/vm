@@ -88,22 +88,21 @@ uint16_t sign_extend(uint16_t x, int bit_count)
 
 void add(FILE* binary, int variant)
 {
-    if (variant > 5) printf("Variant of >5 is invalid.\n");
     if (variant < 2) {
         uint8_t modrm;
         fread(&modrm, 1, 1, binary);
         if ((modrm & 0b11000000) == 0b11000000) {
-            if (variant == 0) reg[modrm & 0b00111000] += reg[modrm & 0b00000111];
-            if (variant == 1) {
+            if (variant == 1) reg[modrm & 0b00111000] += reg[modrm & 0b00000111];
+            if (variant == 0) {
                 // TODO: Check that 8 bit carries dont happen
-                reg[modrm & 0b00111000] += reg[modrm & 0b00000111] >> 8;
+                reg[modrm & 0b00111000] += reg[modrm & 0b00000111] << 8 >> 8;
             }
         }
         else printf("Indirect adressing not supported yet. Skipping operation.\n");
     }
     else if (variant == 4) {
-        uint8_t imm16;
-        fread(&imm16, 2, 1, binary);
+        uint16_t imm16;
+        fread(&imm16, 1, 1, binary);
         reg[0] += imm16;
     }
     else if (variant == 5) {
@@ -111,13 +110,6 @@ void add(FILE* binary, int variant)
         fread(&imm8, 1, 1, binary);
         reg[0] += sign_extend(imm8, 8);
     }
-}
-
-void add_05(FILE* binary)
-{
-    uint8_t imm8;
-    fread(&imm8, 1, 1, binary);
-    reg[0] += sign_extend(imm8, 8);
 }
 
 int main(int argc, char** argv)
@@ -148,7 +140,7 @@ int main(int argc, char** argv)
             break;
         case 0x04:
             add(binary,4);
-            i++;
+            i+=2;
             break;
         case 0x05:
             add(binary,5);
