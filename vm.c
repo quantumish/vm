@@ -5,17 +5,30 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+// Hacky %b for printf from stackoverflow
+//https://stackoverflow.com/questions/111928/is-there-a-printf-converter-to-print-in-binary-format
+#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
+#define BYTE_TO_BINARY(byte)  \
+  (byte & 0x80 ? '1' : '0'), \
+  (byte & 0x40 ? '1' : '0'), \
+  (byte & 0x20 ? '1' : '0'), \
+  (byte & 0x10 ? '1' : '0'), \
+  (byte & 0x08 ? '1' : '0'), \
+  (byte & 0x04 ? '1' : '0'), \
+  (byte & 0x02 ? '1' : '0'), \
+  (byte & 0x01 ? '1' : '0') 
+
 // Define registers
 enum
 {
-    R_R0 = 0,
-    R_R1,
-    R_R2,
-    R_R3,
-    R_R4,
-    R_R5,
-    R_R6,
-    R_R7,
+    R_AX = 0,
+    R_CX,
+    R_DX,
+    R_BX,
+    R_SP,
+    R_BP,
+    R_SI,
+    R_DI,
     R_PC,
     R_COND,
     R_COUNT
@@ -52,6 +65,14 @@ off_t fsize(const char *filename) {
     return -1; 
 }
 
+void add(FILE* binary)
+{
+    uint8_t modrm;
+    fread(&modrm, 1, 1, binary);
+    printf(""BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(modrm));
+    printf(""BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(modrm & 3));
+}
+
 int main(int argc, char** argv)
 {
     if (argc < 2) {
@@ -60,14 +81,18 @@ int main(int argc, char** argv)
     }
     FILE* binary = fopen(argv[1], "r");
     reg[R_PC] = 0x0000; // init program counter
-    uint8_t signature; // Avoid file signature shifting everything over by one.
-    fread(&signature, 1, 1, binary);
+    //uint8_t signature; // Avoid file signature shifting everything over by one.
+    //fread(&signature, 1, 1, binary);
     for (int i = 0; i < fsize(argv[1]); i++) {
         reg[R_PC]++;
         uint8_t op;
         fread(&op, 1, 1, binary);
+        printf("Read opcode 0x%02x\n", op);
         switch (op) {
         case OP_ADD:
+            printf("im in \n");
+            add(binary);
+            i++;
             break;
         case OP_LDR:
             break;
