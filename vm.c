@@ -79,34 +79,30 @@ uint16_t sign_extend(uint16_t x, int bit_count)
 
 void add(int variant)
 {
-    if (variant < 2) {
+    if (variant == 5) {
+        uint16_t imm16;
+        fread(&imm16, 2, 1, binary);
+        reg[0] += imm16;
+        reg[R_IP]+=2;
+    }
+    else if (variant == 4) {
+        uint8_t imm8;
+        fread(&imm8, 1, 1, binary);
+        reg[0] += sign_extend(imm8, 8);
+        reg[R_IP]++;
+    }
+    else if (variant < 4) {
         uint8_t modrm;
         fread(&modrm, 1, 1, binary);
+        reg[R_IP]++;
         if ((modrm & 0b11000000) == 0b11000000) {
-            if (variant == 1) reg[modrm & 0b00111000] += reg[modrm & 0b00000111];
-            if (variant == 0) {
-                // TODO: Check that 8 bit carries dont happen
-                reg[modrm & 0b00111000] += reg[modrm & 0b00000111] << 8 >> 8;
-            }
+            // TODO: Check that 8 bit carries dont happen
+            if (variant == 1) reg[modrm & 0b00000111] += reg[modrm & 0b00111000] << 8 >> 8;
+            else if (variant == 2) reg[modrm & 0b00000111] += reg[modrm & 0b00111000];
+            else if (variant == 3) reg[modrm & 0b00111000] += reg[modrm & 0b00000111] << 8 >> 8;
+            else if (variant == 4) reg[modrm & 0b00111000] += reg[modrm & 0b00000111];
         }
-        else if ((modrm | 0b00111111) == 0b00111111) {
-            if ((modrm & 0b00000111) == 0b00000111) reg[modrm & 0b00111000] += memory[reg[R_BX]];
-            else if ((modrm & 0b00000111) == 0b000000110) {
-                uint16_t disp16;
-                fread(&disp16, 2, 1, binary);
-                reg[modrm & 0b00111000] += memory[reg[disp16]];
-                reg[R_IP] += 2;
-            }
-            else if ((modrm & 0b00000111) == 0b000000101) reg[modrm & 0b00111000] += memory[reg[R_DI]];
-            else if ((modrm & 0b00000111) == 0b000000100) reg[modrm & 0b00111000] += memory[reg[R_SI]];
-            else if ((modrm & 0b00000111) == 0b000000011) reg[modrm & 0b00111000] += memory[reg[R_BP] + reg[R_DI]];
-            else if ((modrm & 0b00000111) == 0b000000010) reg[modrm & 0b00111000] += memory[reg[R_BP] + reg[R_SI]];
-            else if ((modrm & 0b00000111) == 0b000000001) reg[modrm & 0b00111000] += memory[reg[R_BX] + reg[R_DI]];
-            else if ((modrm & 0b00000111) == 0b000000000) reg[modrm & 0b00111000] += memory[reg[R_BX] + reg[R_SI]];
-        }
-        else if ((modrm & 0b01000000) == 0b01000000) {
-            uint16_t disp8;
-            fread(&disp8, 1, 1, binary);
+        else {
             int addr;
             if ((modrm & 0b00000111) == 0b00000111) addr = reg[R_BX];
             else if ((modrm & 0b00000111) == 0b000000101) addr = reg[R_DI];
@@ -115,26 +111,30 @@ void add(int variant)
             else if ((modrm & 0b00000111) == 0b000000010) addr = reg[R_BP] + reg[R_SI];
             else if ((modrm & 0b00000111) == 0b000000001) addr = reg[R_BX] + reg[R_DI];
             else if ((modrm & 0b00000111) == 0b000000000) addr = reg[R_BX] + reg[R_SI];
-            reg[R_IP]++;
-        }
-        else if ((modrm & 0b00000111) == 0b000000110) {
+            if ((modrm & 0b01000000) == 0b01000000) {
+                uint8_t disp8;
+                fread(&disp8, 1, 1, binary);
+                addr += disp8;
+                reg[R_IP]++;
+            }
+            else if ((modrm & 0b10000000) == 0b10000000) {
+                uint16_t disp16;
+                fread(&disp16, 2, 1, binary);
+                addr += disp16;
+                reg[R_IP]+=2;
+            }
+            // Exception to pattern in ModR/M table has to be addressed separately
+            else if ((modrm | 0b00111111) == 0b00111111 && (modrm & 0b00000111) == 0b000000110) {
                 uint16_t disp16;
                 fread(&disp16, 2, 1, binary);
                 reg[modrm & 0b00111000] += memory[reg[disp16]];
                 reg[R_IP] += 2;
+            }
+            if (variant == 1) memory[addr] += reg[modrm & 0b00111000] << 8 >> 8;
+            else if (variant == 2) memory[addr] += reg[modrm & 0b00111000];
+            else if (variant == 3) reg[modrm & 0b00111000] += memory[addr] << 8 >> 8;
+            else if (variant == 4) reg[modrm & 0b00111000] += memory[addr];
         }
-    }
-
-    }
-    else if (variant == 4) {
-        uint16_t imm16;
-        fread(&imm16, 2, 1, binary);
-        reg[0] += imm16;
-    }
-    else if (variant == 5) {
-        uint8_t imm8;
-        fread(&imm8, 1, 1, binary);
-        reg[0] += sign_extend(imm8, 8);
     }
 }
 
@@ -188,19 +188,15 @@ int main(int argc, char** argv)
         switch (op) {
         case 0x00:
             add(0);
-            reg[R_IP]++;
             break;
         case 0x01:
             add(1);
-            reg[R_IP]++;
             break;
         case 0x04:
             add(4);
-            reg[R_IP]+=2;
             break;
         case 0x05:
             add(5);
-            reg[R_IP]++;
             break;
         case 0xEB:
             jump(8);
