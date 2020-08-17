@@ -37,7 +37,7 @@ enum
 // Define opcodes
 enum
 {
-    OP_ADD = 0x00,
+    OP_ADD = 0x01,
     OP_LDR = 0x10, // Imaginary instruction that is basically just MOV r/m16 r16
     OP_STR = 0x11, // Imaginary instruction that is basically just MOV r/m16 r16
     OP_AND = 0x20, // TODO: Figure out right opcode for AND
@@ -65,13 +65,50 @@ off_t fsize(const char *filename) {
     return -1; 
 }
 
-void add(FILE* binary)
+void update_flags(uint16_t r)
+{
+    if (reg[r] == 0) {
+        reg[R_COND] = FL_ZRO;
+    }
+    else if (reg[r] >> 15) { // TODO: Look into how negative numbers work for x86
+        reg[R_COND] = FL_NEG;
+    }
+    else {
+        reg[R_COND] = FL_POS;
+    }
+}
+
+uint16_t sign_extend(uint16_t x, int bit_count)
+{
+    if ((x >> (bit_count - 1)) & 1) {
+        x |= (0xFFFF << bit_count);
+    }
+    return x;
+}
+
+void add_01(FILE* binary)
 {
     uint8_t modrm;
     fread(&modrm, 1, 1, binary);
-    printf(""BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(modrm));
-    printf(""BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(modrm & 3));
+    if ((modrm & 0b11000000) == 0b11000000) {
+        reg[modrm & 0b00111000] += reg[modrm & 0b00000111];
+    }
+    else printf("Indirect adressing not supported yet. Skipping operation.\n");
 }
+
+void add_05(FILE* binary)
+{
+    uint8_t imm8;
+    fread(&imm8, 1, 1, binary);
+    printf(""BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(imm8));
+    printf(""BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(sign_extend(imm8, 8)));
+    printf(""BYTE_TO_BINARY_PATTERN"\n", BYTE_TO_BINARY(sign_extend(imm8, 8) >> 8));
+    /* if ((modrm & 0b11000000) == 0b11000000) { */
+    /*     reg[modrm & 0b00111000] += reg[modrm & 0b00000111]; */
+    /* } */
+    /* else printf("Indirect adressing not supported yet. Skipping operation.\n"); */
+}
+
 
 int main(int argc, char** argv)
 {
@@ -83,6 +120,8 @@ int main(int argc, char** argv)
     reg[R_PC] = 0x0000; // init program counter
     //uint8_t signature; // Avoid file signature shifting everything over by one.
     //fread(&signature, 1, 1, binary);
+    reg[R_AX] = 1;
+    reg[R_CX] = 1;
     for (int i = 0; i < fsize(argv[1]); i++) {
         reg[R_PC]++;
         uint8_t op;
@@ -90,8 +129,7 @@ int main(int argc, char** argv)
         printf("Read opcode 0x%02x\n", op);
         switch (op) {
         case OP_ADD:
-            printf("im in \n");
-            add(binary);
+            add_05(binary);
             i++;
             break;
         case OP_LDR:
@@ -108,5 +146,6 @@ int main(int argc, char** argv)
             printf("Bad opcode 0x%02x at 0x%02x! Skipping...\n", op, i);
             break;
         }
+        printf("AX contains the decimal value %d\n", reg[R_AX]);
     }
 }
