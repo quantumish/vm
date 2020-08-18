@@ -135,6 +135,23 @@ void xor(uint16_t* a, uint16_t b)
     update_reg_flags(*a);
 }
 
+void cmp(int immsize)
+{
+    if (immsize == 8) {
+        int8_t imm8;
+        fread(&imm8, 1, 1, binary);
+        reg[R_IP]++;
+        printf("%d - %d = %d\n", (reg[R_AX] << 8 >> 8), sign_extend(imm8, 8), (reg[R_AX] << 8 >> 8) - sign_extend(imm8, 8));
+        update_reg_flags((reg[R_AX] << 8 >> 8) - sign_extend(imm8, 8));
+    }
+    else if (immsize == 16) {
+        int16_t imm16;
+        fread(&imm16, 2, 1, binary);
+        reg[R_IP]+=2;
+        update_reg_flags(reg[R_AX] - imm16);
+    }
+}
+
 void std_op(void(*op)(uint16_t*, uint16_t), int variant)
 {
     if (variant == 5) {
@@ -196,8 +213,15 @@ void std_op(void(*op)(uint16_t*, uint16_t), int variant)
     }
 }
 
-void jump(int immsize, bool far)
+void jump(bool condition, int immsize, bool far)
 {
+    printf("condition %d (t %d f %d)\n", condition, true, false);
+    if (!condition) {
+        reg[R_IP]+=immsize/8;
+        fseek(binary, immsize/8, SEEK_CUR);
+        return;
+    }
+    printf("I'm in\n");
     if (far) {
         int8_t imm16;
         fread(&imm16, 2, 1, binary);
@@ -242,7 +266,7 @@ int run(char* filename) {
     binary = fopen(filename, "r");
     //uint8_t signature; // Avoid file signature shifting everything over by one.
     //fread(&signature, 1, 1, binary);
-    reg[R_AX] = 1;
+    reg[R_AX] = 0;
     reg[R_CX] = 1;
     for (reg[R_IP] = 0x0000; reg[R_IP] < fsize(filename);) {
         uint8_t op;
@@ -341,15 +365,12 @@ int run(char* filename) {
         case 0x35:
             std_op(xor, 5);
             break;
-        case 0xEB:
-            jump(8, false);
+        case 0x3C:
+            cmp(8);
             break;
-        case 0xE9:
-            jump(16, false);
-            break;
-        case 0xEA:
-            jump(16, true);
-            break;
+        case 0x3D:
+            cmp(16);
+            break;    
         case 0x50:
             push(0);
             break;
@@ -397,7 +418,22 @@ int run(char* filename) {
             break;
         case 0x65:
             pop(7);
-            break; 
+            break;
+        case 0x74:
+            jump((reg[R_FLAGS] | ~FL_ZF) == ~FL_ZF, 8, false);
+            break;
+        case 0x75:
+            jump((reg[R_FLAGS] & FL_ZF) == FL_ZF, 8, false);
+            break;
+        case 0xEB:
+            jump(true, 8, false);
+            break;
+        case 0xE9:
+            jump(true, 16, false);
+            break;
+        case 0xEA:
+            jump(true, 16, true);
+            break;
         default:
             printf("Bad opcode 0x%02x at 0x%02x! Skipping...\n", op, reg[R_IP]);
             break;
