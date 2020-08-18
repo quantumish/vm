@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h> 
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -37,6 +38,7 @@
 /* --- end macros --- */
 
 #define MAX_INPUT 100
+#define MAX_DISPLAY 100
 
 // Define registers
 enum
@@ -53,6 +55,8 @@ enum
     R_FLAGS,
     R_COUNT
 };
+
+char* reg_name[R_COUNT] = {"AX", "CX", "DX", "BX", "SP", "BP", "SI", "DI", "IP", "FLAGS"};
 
 // Enum for flags
 // Decimal is simpler to write than 16-bit binary...
@@ -192,20 +196,30 @@ void std_op(void(*op)(uint16_t*, uint16_t), int variant)
     }
 }
 
-void jump(int immsize)
+void jump(int immsize, bool far)
 {
+    if (far) {
+        int8_t imm16;
+        fread(&imm16, 2, 1, binary);
+        reg[R_IP]+=2;
+        fseek(binary, imm16, SEEK_SET);
+        reg[R_IP] = imm16;
+    }
     if (immsize == 8) {
         int8_t imm8;
         fread(&imm8, 1, 1, binary);
+        reg[R_IP]++;
         fseek(binary, imm8, SEEK_CUR);
         reg[R_IP] -= imm8;
     }
     else if (immsize == 16) {
-        int8_t imm16;
-        fread(&imm16, 1, 1, binary);
+        int16_t imm16;
+        fread(&imm16, 2, 1, binary);
+        reg[R_IP]+=2;
         fseek(binary, imm16, SEEK_CUR);
         reg[R_IP] -= imm16;
     }
+    // TODO: Add register JMP instructions
 }
 
 void push(int reg_num)
@@ -326,10 +340,13 @@ int run(char* filename) {
             std_op(xor, 5);
             break;
         case 0xEB:
-            jump(8);
+            jump(8, false);
             break;
         case 0xE9:
-            jump(16);
+            jump(16, false);
+            break;
+        case 0xEA:
+            jump(16, true);
             break;
         case 0x50:
             push(0);
@@ -389,7 +406,7 @@ int run(char* filename) {
 
 int main(int argc, char** argv)
 {
-    int imode = 0;
+    bool imode = false;
     if (argc < 2) {
         printf("Invalid command: need binary file input!\n");
         return 1;
@@ -405,16 +422,7 @@ int main(int argc, char** argv)
             if (strcmp(command, "run\n") == 0) run(argv[1]);
             else if (strcmp(command, "registers\n") == 0) {
                 printf("       Hex    │ base10 │ Binary\n");
-                printf("   AX: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_AX], reg[R_AX], PRINTF_BYTE_TO_BINARY_INT16(reg[R_AX]));
-                printf("   BX: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_BX], reg[R_BX], PRINTF_BYTE_TO_BINARY_INT16(reg[R_BX]));
-                printf("   CX: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_CX], reg[R_CX], PRINTF_BYTE_TO_BINARY_INT16(reg[R_CX]));
-                printf("   DX: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_DX], reg[R_DX], PRINTF_BYTE_TO_BINARY_INT16(reg[R_DX]));
-                printf("   SP: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_SP], reg[R_SP], PRINTF_BYTE_TO_BINARY_INT16(reg[R_SP]));
-                printf("   BP: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_BP], reg[R_BP], PRINTF_BYTE_TO_BINARY_INT16(reg[R_BP]));
-                printf("   SI: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_SI], reg[R_SI], PRINTF_BYTE_TO_BINARY_INT16(reg[R_SI]));
-                printf("   DI: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_DI], reg[R_DI], PRINTF_BYTE_TO_BINARY_INT16(reg[R_DI]));
-                printf("   IP: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_IP], reg[R_IP], PRINTF_BYTE_TO_BINARY_INT16(reg[R_IP]));
-                printf("FLAGS: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_FLAGS], reg[R_FLAGS], PRINTF_BYTE_TO_BINARY_INT16(reg[R_FLAGS]));
+                for (int i = 0; i < R_COUNT; i++) printf("%5s: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg_name[i], reg[i], reg[i], PRINTF_BYTE_TO_BINARY_INT16(reg[i]));
             }
             else if (strcmp(command, "flags\n") == 0) {
                 printf("PF: ");
