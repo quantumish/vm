@@ -90,7 +90,7 @@ off_t fsize(const char *filename) {
     return -1; 
 }
 
-void update_reg_flags(uint16_t r)
+void update_flags(uint16_t r)
 {
     if (r % 2 == 0) reg[R_FLAGS] |= FL_PF;
     else reg[R_FLAGS] &= ~FL_PF;
@@ -111,31 +111,37 @@ uint16_t sign_extend(uint16_t x, int bit_count)
 void add(uint16_t* a, uint16_t b)
 {
     *a += b;
-    update_reg_flags(*a);
 }
 
 void sub(uint16_t* a, uint16_t b)
 {
     *a += b;
-    update_reg_flags(*a);
+}
+
+void mul(uint16_t* a, uint16_t b)
+{
+    printf("%d * %d\n", *a, b);
+    *a *= b;
+}
+
+void udiv(uint16_t* a, uint16_t b)
+{
+    *a /= b;
 }
 
 void and(uint16_t* a, uint16_t b)
 {
     *a &= b;
-    update_reg_flags(*a);
 } 
  
 void or(uint16_t* a, uint16_t b)
 {
     *a |= b;
-    update_reg_flags(*a);
 }
 
 void xor(uint16_t* a, uint16_t b)
 {
     *a ^= b;
-    update_reg_flags(*a);
 }
 
 void cmp(int immsize)
@@ -145,14 +151,62 @@ void cmp(int immsize)
         fread(&imm8, 1, 1, binary);
         reg[R_IP]++;
         //printf("%d - %d = %d\n", (reg[R_AX] << 8 >> 8), sign_extend(imm8, 8), (reg[R_AX] << 8 >> 8) - sign_extend(imm8, 8));
-        update_reg_flags((reg[R_AX] << 8 >> 8) - sign_extend(imm8, 8));
+        update_flags((reg[R_AX] << 8 >> 8) - sign_extend(imm8, 8));
     }
     else if (immsize == 16) {
         int16_t imm16;
         fread(&imm16, 2, 1, binary);
         reg[R_IP]+=2;
-        update_reg_flags(reg[R_AX] - imm16);
+        update_flags(reg[R_AX] - imm16);
     }
+}
+
+int get_addr(uint8_t modrm)
+{
+    int addr;
+    if ((modrm & 0b00000111) == 0b00000111) addr = reg[R_BX];
+    else if ((modrm & 0b00000111) == 0b000000101) addr = reg[R_DI];
+    else if ((modrm & 0b00000111) == 0b000000100) addr = reg[R_SI];
+    else if ((modrm & 0b00000111) == 0b000000011) addr = reg[R_BP] + reg[R_DI];
+    else if ((modrm & 0b00000111) == 0b000000010) addr = reg[R_BP] + reg[R_SI];
+    else if ((modrm & 0b00000111) == 0b000000001) addr = reg[R_BX] + reg[R_DI];
+    else if ((modrm & 0b00000111) == 0b000000000) addr = reg[R_BX] + reg[R_SI];
+    if ((modrm & 0b01000000) == 0b01000000) {
+        uint8_t disp8;
+        fread(&disp8, 1, 1, binary);
+        addr += disp8;
+        reg[R_IP]++;
+    }
+    else if ((modrm & 0b10000000) == 0b10000000) {
+        uint16_t disp16;
+        fread(&disp16, 2, 1, binary);
+        addr += disp16;
+        reg[R_IP]+=2;
+    }
+    // Exception to pattern in ModR/M table has to be addressed separately
+    else if ((modrm | 0b00111111) == 0b00111111 && (modrm & 0b00000111) == 0b000000110) {
+        uint16_t disp16;
+        fread(&disp16, 2, 1, binary);
+        addr = reg[disp16];
+        reg[R_IP] += 2;
+    }
+    return addr;
+}
+
+void ax_op(void(*op)(uint16_t*, uint16_t), int regsize, uint8_t modrm)
+{
+    printf("Hiya\n");
+    if ((modrm & 0b11000000) == 0b11000000) {
+        // TODO: Check that 8 bit carries dont happen
+        if (regsize == 8) (*op)(&reg[0], reg[modrm & 0b00111000] << 8 >> 8);
+        else (*op)(&reg[0], reg[modrm & 0b00111000]);
+    }
+    else {
+        int addr = get_addr(modrm);
+        if (regsize == 8) (*op)(&reg[0], memory[addr] << 8 >> 8);
+        else (*op)(&reg[0], memory[addr]);
+    }
+    update_flags(reg[0]);
 }
 
 void std_op(void(*op)(uint16_t*, uint16_t), int variant)
@@ -162,12 +216,14 @@ void std_op(void(*op)(uint16_t*, uint16_t), int variant)
         fread(&imm16, 2, 1, binary);
         (*op)(&reg[0], imm16);
         reg[R_IP]+=2;
+        update_flags(reg[0]);
     }
     else if (variant == 4) {
         uint8_t imm8;
         fread(&imm8, 1, 1, binary);
         (*op)(&reg[0], sign_extend(imm8, 8));
         reg[R_IP]++;
+        update_flags(reg[0]);
     }
     else if (variant < 4) {
         uint8_t modrm;
@@ -179,39 +235,17 @@ void std_op(void(*op)(uint16_t*, uint16_t), int variant)
             else if (variant == 1) (*op)(&reg[modrm & 0b00000111], reg[modrm & 0b00111000]);
             else if (variant == 2) (*op)(&reg[modrm & 0b00111000], reg[modrm & 0b00000111] << 8 >> 8);
             else if (variant == 3) (*op)(&reg[modrm & 0b00111000], reg[modrm & 0b00000111]);
+            if (variant == 0 || variant == 1) update_flags(reg[modrm & 0b00000111]);
+            else update_flags(reg[modrm & 0b00111000]);
         }
         else {
-            int addr;
-            if ((modrm & 0b00000111) == 0b00000111) addr = reg[R_BX];
-            else if ((modrm & 0b00000111) == 0b000000101) addr = reg[R_DI];
-            else if ((modrm & 0b00000111) == 0b000000100) addr = reg[R_SI];
-            else if ((modrm & 0b00000111) == 0b000000011) addr = reg[R_BP] + reg[R_DI];
-            else if ((modrm & 0b00000111) == 0b000000010) addr = reg[R_BP] + reg[R_SI];
-            else if ((modrm & 0b00000111) == 0b000000001) addr = reg[R_BX] + reg[R_DI];
-            else if ((modrm & 0b00000111) == 0b000000000) addr = reg[R_BX] + reg[R_SI];
-            if ((modrm & 0b01000000) == 0b01000000) {
-                uint8_t disp8;
-                fread(&disp8, 1, 1, binary);
-                addr += disp8;
-                reg[R_IP]++;
-            }
-            else if ((modrm & 0b10000000) == 0b10000000) {
-                uint16_t disp16;
-                fread(&disp16, 2, 1, binary);
-                addr += disp16;
-                reg[R_IP]+=2;
-            }
-            // Exception to pattern in ModR/M table has to be addressed separately
-            else if ((modrm | 0b00111111) == 0b00111111 && (modrm & 0b00000111) == 0b000000110) {
-                uint16_t disp16;
-                fread(&disp16, 2, 1, binary);
-                reg[modrm & 0b00111000] += memory[reg[disp16]];
-                reg[R_IP] += 2;
-            }
+            int addr = get_addr(modrm);
             if (variant == 0) (*op)(&memory[addr], reg[modrm & 0b00111000] << 8 >> 8);
             else if (variant == 1) (*op)(&memory[addr], reg[modrm & 0b00111000]); 
             else if (variant == 2) (*op)(&reg[modrm & 0b00111000], memory[addr] << 8 >> 8);
             else if (variant == 3) (*op)(&reg[modrm & 0b00111000], memory[addr]);
+            if (variant == 0 || variant == 1) update_flags(reg[modrm & 0b00111000]);
+            else update_flags(memory[addr]);
         }
     }
 }
@@ -245,212 +279,31 @@ void jump(bool condition, int immsize, bool far)
 
 void push(int reg_num)
 {
-    reg[R_SP] -= 2;
+    reg[R_SP] -= 1;
     memory[reg[R_SP]] = reg[reg_num];
 }
 
 void pop(int reg_num)
 {
     reg[reg_num] = memory[reg[R_SP]];
-    reg[R_SP] += 2;
+    reg[R_SP] += 1;
 }
 
-int step(bool verbose) {
-   
-        uint8_t op;
-        fread(&op, 1, 1, binary);
-        reg[R_IP]++;
-        if (verbose) printf("Read opcode 0x%02x\n", op);
-        switch (op) {
-        case 0x00:
-            std_op(add, 0);
-            break;
-        case 0x01:
-            std_op(add, 1);
-            break;
-        case 0x02:
-            std_op(add, 2);
-            break;
-        case 0x03:
-            std_op(add, 3);
-            break;
-        case 0x04:
-            std_op(add, 4);
-            break;
-        case 0x05:
-            std_op(add, 5);
-            break;
-        case 0x08:
-            std_op(or, 0);
-            break;
-        case 0x09:
-            std_op(or, 1);
-            break;
-        case 0x0A:
-            std_op(or, 2);
-            break;
-        case 0x0B:
-            std_op(or, 3);
-            break;
-        case 0x0C:
-            std_op(or, 4);
-            break;
-        case 0x0D:
-            std_op(or, 5);
-            break;
-        case 0x20:
-            std_op(and, 0);
-            break;
-        case 0x21:
-            std_op(and, 1);
-            break;
-        case 0x22:
-            std_op(and, 2);
-            break;
-        case 0x23:
-            std_op(and, 3);
-            break;
-        case 0x24:
-            std_op(and, 4);
-            break;
-        case 0x25:
-            std_op(and, 5);
-            break;
-        case 0x28:
-            std_op(sub, 0);
-            break;
-        case 0x29:
-            std_op(sub, 1);
-            break;
-        case 0x2A:
-            std_op(sub, 2);
-            break;
-        case 0x2B:
-            std_op(sub, 3);
-            break;
-        case 0x2C:
-            std_op(sub, 4);
-            break;
-        case 0x2D:
-            std_op(sub, 5);
-            break;
-        case 0x30:
-            std_op(xor, 0);
-            break;
-        case 0x31:
-            std_op(xor, 1);
-            break;
-        case 0x32:
-            std_op(xor, 2);
-            break;
-        case 0x33:
-            std_op(xor, 3);
-            break;
-        case 0x34:
-            std_op(xor, 4);
-            break;
-        case 0x35:
-            std_op(xor, 5);
-            break;
-        case 0x3C:
-            cmp(8);
-            break;
-        case 0x3D:
-            cmp(16);
-            break;    
-        case 0x50:
-            push(0);
-            break;
-        case 0x51:
-            push(1);
-            break;
-        case 0x52:
-            push(2);
-            break;
-        case 0x53:
-            push(3);
-            break;
-        case 0x54:
-            push(4);
-            break;
-        case 0x55:
-            push(5);
-            break;
-        case 0x56:
-            push(6);
-            break;
-        case 0x57:
-            push(7);
-            break;
-        case 0x58:
-            pop(0);
-            break;
-        case 0x59:
-            pop(1);
-            break;
-        case 0x60:
-            pop(2);
-            break;
-        case 0x61:
-            pop(3);
-            break;
-        case 0x62:
-            pop(4);
-            break;
-        case 0x63:
-            pop(5);
-            break;
-        case 0x64:
-            pop(6);
-            break;
-        case 0x65:
-            pop(7);
-            break;
-        case 0x74:
-            jump((reg[R_FLAGS] | ~FL_ZF) == ~FL_ZF, 8, false);
-            break;
-        case 0x75:
-            jump((reg[R_FLAGS] & FL_ZF) == FL_ZF, 8, false);
-            break;
-        case 0x78:
-            jump((reg[R_FLAGS] & FL_SF) == FL_SF, 8, false);
-            break;
-        case 0x79:
-            jump((reg[R_FLAGS] | ~FL_SF) == ~FL_SF, 8, false);
-            break;
-        case 0x7A:
-            jump((reg[R_FLAGS] & FL_PF) == FL_PF, 8, false);
-            break;
-        case 0x7B:
-            jump((reg[R_FLAGS] | ~FL_ZF) == ~FL_ZF, 8, false);
-            break;
-        case 0xEB:
-            jump(true, 8, false);
-            break;
-        case 0xE9:
-            jump(true, 16, false);
-            break;
-        case 0xEA:
-            jump(true, 16, true);
-            break;
-        default:
-            printf("Bad opcode 0x%02x at 0x%02x! Skipping...\n", op, reg[R_IP]);
-            break;
-        }
-    return 0;
-}
+#include "read.c"
 
 int run(char* filename)
 {
     // Initialize stack
     reg[R_BP] = rand() % (UINT16_MAX + 1);
     reg[R_SP] = reg[R_BP];
+    reg[R_CX] = 2;
     binary = fopen(filename, "r");
     //uint8_t signature; // Avoid file signature shifting everything over by one.
     //fread(&signature, 1, 1, binary);
     for (reg[R_IP] = 0x0000; reg[R_IP] < fsize(filename);) {
         step(false);
     }
+    return 0;
 }
 
 int main(int argc, char** argv)
@@ -478,6 +331,18 @@ int main(int argc, char** argv)
                 printf("PF: %d\n", (reg[R_FLAGS] & FL_PF) == FL_PF);
                 printf("ZF: %d\n", (reg[R_FLAGS] & FL_ZF) == FL_ZF);
                 printf("SF: %d\n", (reg[R_FLAGS] & FL_SF) == FL_SF);
+            }
+            else if (strcmp(command, "stack\n") == 0) {
+                for (int i = reg[R_SP]; i < reg[R_BP]; i+=1) {
+                    printf("        --------\n");
+                    printf("0x%04x:  0x%04x ", i, memory[i]);
+                    for (int j = 0; j < R_COUNT; j++) if (reg[j] == i) printf(" <- %s", reg_name[j]);
+                    printf("\n");
+                }
+                printf("        --------\n");
+                printf("0x%04x:  0x%04x ", reg[R_BP], memory[reg[R_BP]]);
+                printf(" <- BP");
+                printf("\n        --------\n");
             }
             else if (strcmp(command, "step\n") == 0) {
                 if (!init) {

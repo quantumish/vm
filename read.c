@@ -1,7 +1,7 @@
 #define MAP_OPCODE(x, func) case x: func; break;
 #define MULTIMAP_BEGIN(x) case x: fread(&modrm, 1, 1, binary); reg[R_IP]++;
 #define MULTIMAP_END(x) break;
-#define EXTENSION_MAP(ext, func) if ((modrm & (ext << 3)) == modrm) func
+#define EXTENSION_MAP(ext, func) if ((modrm | (ext << 3)) == modrm) func
 
 int step(bool verbose) {
     uint8_t op;
@@ -68,8 +68,13 @@ int step(bool verbose) {
         MAP_OPCODE(0xEB, jump(true, 8, false));
         MAP_OPCODE(0xEA, jump(true, 16, true));
     MULTIMAP_BEGIN(0xF6)
-        EXTENSION_MAP(4, std_op(add, 3));
+        EXTENSION_MAP(4, ax_op(mul, 8, modrm));
+        EXTENSION_MAP(6, ax_op(udiv, 8, modrm));
     MULTIMAP_END(0xF6)
+    MULTIMAP_BEGIN(0xF7)
+        EXTENSION_MAP(4, ax_op(mul, 16, modrm));
+        EXTENSION_MAP(6, ax_op(udiv, 16, modrm));
+    MULTIMAP_END(0xF7)
     default:
         printf("Bad opcode 0x%02x at 0x%02x! Skipping...\n", op, reg[R_IP]);
         break;
