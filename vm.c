@@ -8,16 +8,33 @@
 
 // Hacky %b for printf from stackoverflow
 //https://stackoverflow.com/questions/111928/is-there-a-printf-converter-to-print-in-binary-format
-#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
-#define BYTE_TO_BINARY(byte)  \
-  (byte & 0x80 ? '1' : '0'), \
-  (byte & 0x40 ? '1' : '0'), \
-  (byte & 0x20 ? '1' : '0'), \
-  (byte & 0x10 ? '1' : '0'), \
-  (byte & 0x08 ? '1' : '0'), \
-  (byte & 0x04 ? '1' : '0'), \
-  (byte & 0x02 ? '1' : '0'), \
-  (byte & 0x01 ? '1' : '0') 
+//https://stackoverflow.com/questions/111928/is-there-a-printf-converter-to-print-in-binary-format/25108449#25108449
+/* --- PRINTF_BYTE_TO_BINARY macro's --- */
+#define PRINTF_BINARY_SEPARATOR " "
+#define PRINTF_BINARY_PATTERN_INT8 "%c%c%c%c%c%c%c%c"
+#define PRINTF_BYTE_TO_BINARY_INT8(i)    \
+    (((i) & 0x80ll) ? '1' : '0'), \
+    (((i) & 0x40ll) ? '1' : '0'), \
+    (((i) & 0x20ll) ? '1' : '0'), \
+    (((i) & 0x10ll) ? '1' : '0'), \
+    (((i) & 0x08ll) ? '1' : '0'), \
+    (((i) & 0x04ll) ? '1' : '0'), \
+    (((i) & 0x02ll) ? '1' : '0'), \
+    (((i) & 0x01ll) ? '1' : '0')
+
+#define PRINTF_BINARY_PATTERN_INT16 \
+    PRINTF_BINARY_PATTERN_INT8               PRINTF_BINARY_SEPARATOR              PRINTF_BINARY_PATTERN_INT8
+#define PRINTF_BYTE_TO_BINARY_INT16(i) \
+    PRINTF_BYTE_TO_BINARY_INT8((i) >> 8),   PRINTF_BYTE_TO_BINARY_INT8(i)
+#define PRINTF_BINARY_PATTERN_INT32 \
+    PRINTF_BINARY_PATTERN_INT16              PRINTF_BINARY_SEPARATOR              PRINTF_BINARY_PATTERN_INT16
+#define PRINTF_BYTE_TO_BINARY_INT32(i) \
+    PRINTF_BYTE_TO_BINARY_INT16((i) >> 16), PRINTF_BYTE_TO_BINARY_INT16(i)
+#define PRINTF_BINARY_PATTERN_INT64    \
+    PRINTF_BINARY_PATTERN_INT32              PRINTF_BINARY_SEPARATOR              PRINTF_BINARY_PATTERN_INT32
+#define PRINTF_BYTE_TO_BINARY_INT64(i) \
+    PRINTF_BYTE_TO_BINARY_INT32((i) >> 32), PRINTF_BYTE_TO_BINARY_INT32(i)
+/* --- end macros --- */
 
 #define MAX_INPUT 100
 
@@ -33,16 +50,23 @@ enum
     R_SI,
     R_DI,
     R_IP,
-    R_COND,
+    R_FLAGS,
     R_COUNT
 };
 
-// Define condition flag enums
+// Enum for flags
+// Decimal is simpler to write than 16-bit binary...
 enum
 {
-    FL_POS = 1 << 0,
-    FL_ZRO = 1 << 1,
-    FL_NEG = 1 << 2
+    FL_CF = 0,
+    FL_PF = 4,
+    FL_AF = 16,
+    FL_ZF = 64,
+    FL_SF = 128,
+    FL_TF = 256,
+    FL_IF = 512,
+    FL_DF = 1024,
+    FL_OF = 2048
 };
 
 // Staying 16 bit for now
@@ -59,17 +83,14 @@ off_t fsize(const char *filename) {
     return -1; 
 }
 
-void update_flags(uint16_t r)
+void update_reg_flags(uint16_t r)
 {
-    if (reg[r] == 0) {
-        reg[R_COND] = FL_ZRO;
-    }
-    else if (reg[r] >> 15) { // TODO: Look into how negative numbers work for x86
-        reg[R_COND] = FL_NEG;
-    }
-    else {
-        reg[R_COND] = FL_POS;
-    }
+    if (r % 2 == 0) reg[R_FLAGS] |= FL_PF;
+    else reg[R_FLAGS] &= ~FL_PF;
+    if (r == 0) reg[R_FLAGS] |= FL_ZF;
+    else reg[R_FLAGS] &= ~FL_ZF;
+    if (r < 0) reg[R_FLAGS] |= FL_SF;
+    else reg[R_FLAGS] &= ~FL_SF;
 }
 
 uint16_t sign_extend(uint16_t x, int bit_count)
@@ -83,26 +104,31 @@ uint16_t sign_extend(uint16_t x, int bit_count)
 void add(uint16_t* a, uint16_t b)
 {
     *a += b;
+    update_reg_flags(*a);
 }
 
 void sub(uint16_t* a, uint16_t b)
 {
     *a += b;
+    update_reg_flags(*a);
 }
 
 void and(uint16_t* a, uint16_t b)
 {
     *a &= b;
+    update_reg_flags(*a);
 } 
  
 void or(uint16_t* a, uint16_t b)
 {
     *a |= b;
+    update_reg_flags(*a);
 }
 
 void xor(uint16_t* a, uint16_t b)
 {
     *a ^= b;
+    update_reg_flags(*a);
 }
 
 void std_op(void(*op)(uint16_t*, uint16_t), int variant)
@@ -378,18 +404,30 @@ int main(int argc, char** argv)
             char* command = strtok(msg," ");
             if (strcmp(command, "run\n") == 0) run(argv[1]);
             else if (strcmp(command, "registers\n") == 0) {
-                printf("  AX: 0x%04x (%d)\n", reg[R_AX], reg[R_AX]);
-                printf("  BX: 0x%04x (%d)\n", reg[R_BX], reg[R_BX]);
-                printf("  CX: 0x%04x (%d)\n", reg[R_CX], reg[R_CX]);
-                printf("  DX: 0x%04x (%d)\n", reg[R_DX], reg[R_DX]);
-                printf("  SP: 0x%04x (%d)\n", reg[R_SP], reg[R_SP]);
-                printf("  BP: 0x%04x (%d)\n", reg[R_BP], reg[R_BP]);
-                printf("  SI: 0x%04x (%d)\n", reg[R_SI], reg[R_SI]);
-                printf("  DI: 0x%04x (%d)\n", reg[R_DI], reg[R_DI]);
-                printf("  IP: 0x%04x (%d)\n", reg[R_IP], reg[R_IP]);
-                printf("COND: 0x%04x (%d)\n", reg[R_COND], reg[R_COND]);
+                printf("       Hex    │ base10 │ Binary\n");
+                printf("   AX: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_AX], reg[R_AX], PRINTF_BYTE_TO_BINARY_INT16(reg[R_AX]));
+                printf("   BX: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_BX], reg[R_BX], PRINTF_BYTE_TO_BINARY_INT16(reg[R_BX]));
+                printf("   CX: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_CX], reg[R_CX], PRINTF_BYTE_TO_BINARY_INT16(reg[R_CX]));
+                printf("   DX: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_DX], reg[R_DX], PRINTF_BYTE_TO_BINARY_INT16(reg[R_DX]));
+                printf("   SP: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_SP], reg[R_SP], PRINTF_BYTE_TO_BINARY_INT16(reg[R_SP]));
+                printf("   BP: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_BP], reg[R_BP], PRINTF_BYTE_TO_BINARY_INT16(reg[R_BP]));
+                printf("   SI: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_SI], reg[R_SI], PRINTF_BYTE_TO_BINARY_INT16(reg[R_SI]));
+                printf("   DI: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_DI], reg[R_DI], PRINTF_BYTE_TO_BINARY_INT16(reg[R_DI]));
+                printf("   IP: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_IP], reg[R_IP], PRINTF_BYTE_TO_BINARY_INT16(reg[R_IP]));
+                printf("FLAGS: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg[R_FLAGS], reg[R_FLAGS], PRINTF_BYTE_TO_BINARY_INT16(reg[R_FLAGS]));
             }
-            if (strcmp(msg, "quit\n") == 0 || strcmp(msg, "exit\n") == 0 || strcmp(msg, "q\n") == 0) exit(1);
+            else if (strcmp(command, "flags\n") == 0) {
+                printf("PF: ");
+                if ((reg[R_FLAGS] & FL_PF) == FL_PF) printf("1 (Even)\n");
+                else printf("0 (Odd)\n");
+                printf("ZF: ");
+                if ((reg[R_FLAGS] & FL_ZF) == FL_ZF) printf("1 (Zero)\n");
+                else printf("0 (Nonzero)\n");
+                printf("SF: ");
+                if ((reg[R_FLAGS] & FL_SF) == FL_SF) printf("1 (Negative)\n");
+                else printf("0 (Positive)\n");
+            }
+            else if (strcmp(msg, "quit\n") == 0 || strcmp(msg, "exit\n") == 0 || strcmp(msg, "q\n") == 0) exit(1);
         }
     }
     else run(argv[1]);
