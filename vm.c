@@ -210,14 +210,14 @@ void jump(int immsize, bool far)
         fread(&imm8, 1, 1, binary);
         reg[R_IP]++;
         fseek(binary, imm8, SEEK_CUR);
-        reg[R_IP] -= imm8;
+        reg[R_IP] += imm8;
     }
     else if (immsize == 16) {
         int16_t imm16;
         fread(&imm16, 2, 1, binary);
         reg[R_IP]+=2;
         fseek(binary, imm16, SEEK_CUR);
-        reg[R_IP] -= imm16;
+        reg[R_IP] += imm16;
     }
     // TODO: Add register JMP instructions
 }
@@ -244,10 +244,12 @@ int run(char* filename) {
     //fread(&signature, 1, 1, binary);
     reg[R_AX] = 1;
     reg[R_CX] = 1;
-    for (reg[R_IP] = 0x0000; reg[R_IP] < fsize(filename); reg[R_IP]++) {
+    for (reg[R_IP] = 0x0000; reg[R_IP] < fsize(filename);) {
         uint8_t op;
         fread(&op, 1, 1, binary);
+        reg[R_IP]++;
         printf("Read opcode 0x%02x\n", op);
+        printf("IP is 0x%04x\n", reg[R_IP]);
         switch (op) {
         case 0x00:
             std_op(add, 0);
