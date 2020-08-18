@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -17,6 +18,8 @@
   (byte & 0x04 ? '1' : '0'), \
   (byte & 0x02 ? '1' : '0'), \
   (byte & 0x01 ? '1' : '0') 
+
+#define MAX_INPUT 100
 
 // Define registers
 enum
@@ -191,22 +194,17 @@ void pop(int reg_num)
     reg[R_SP] += 2;
 }
 
-int main(int argc, char** argv)
-{
-    if (argc < 2) {
-        printf("Invalid command: need binary file input!\n");
-        return 1;
-    }
+int run(char* filename) {
     // Initialize stack
     reg[R_BP] = rand() % (UINT16_MAX + 1);
     reg[R_SP] = reg[R_BP];
     
-    binary = fopen(argv[1], "r");
+    binary = fopen(filename, "r");
     //uint8_t signature; // Avoid file signature shifting everything over by one.
     //fread(&signature, 1, 1, binary);
     reg[R_AX] = 1;
     reg[R_CX] = 1;
-    for (reg[R_IP] = 0x0000; reg[R_IP] < fsize(argv[1]); reg[R_IP]++) {
+    for (reg[R_IP] = 0x0000; reg[R_IP] < fsize(filename); reg[R_IP]++) {
         uint8_t op;
         fread(&op, 1, 1, binary);
         printf("Read opcode 0x%02x\n", op);
@@ -264,6 +262,42 @@ int main(int argc, char** argv)
             break;
         case 0x25:
             std_op(and, 5);
+            break;
+        case 0x28:
+            std_op(sub, 0);
+            break;
+        case 0x29:
+            std_op(sub, 1);
+            break;
+        case 0x2A:
+            std_op(sub, 2);
+            break;
+        case 0x2B:
+            std_op(sub, 3);
+            break;
+        case 0x2C:
+            std_op(sub, 4);
+            break;
+        case 0x2D:
+            std_op(sub, 5);
+            break;
+        case 0x30:
+            std_op(xor, 0);
+            break;
+        case 0x31:
+            std_op(xor, 1);
+            break;
+        case 0x32:
+            std_op(xor, 2);
+            break;
+        case 0x33:
+            std_op(xor, 3);
+            break;
+        case 0x34:
+            std_op(xor, 4);
+            break;
+        case 0x35:
+            std_op(xor, 5);
             break;
         case 0xEB:
             jump(8);
@@ -323,6 +357,40 @@ int main(int argc, char** argv)
             printf("Bad opcode 0x%02x at 0x%02x! Skipping...\n", op, reg[R_IP]);
             break;
         }
-        printf("AX contains the decimal value %d\n", reg[R_AX]);
     }
+    return 0;
+}
+
+int main(int argc, char** argv)
+{
+    int imode = 0;
+    if (argc < 2) {
+        printf("Invalid command: need binary file input!\n");
+        return 1;
+    }
+    for (int i = 0; i < argc; i++) if (strcmp(argv[i], "-i") == 0) imode = 1;
+    if (imode) {
+        char msg[MAX_INPUT] = "";
+        printf("VM 0.001 interactive interface\n-\n");
+        while (1) {
+            printf("(vm) ");
+            fgets(msg, MAX_INPUT, stdin);
+            char* command = strtok(msg," ");
+            if (strcmp(command, "run\n") == 0) run(argv[1]);
+            else if (strcmp(command, "registers\n") == 0) {
+                printf("  AX: 0x%04x (%d)\n", reg[R_AX], reg[R_AX]);
+                printf("  BX: 0x%04x (%d)\n", reg[R_BX], reg[R_BX]);
+                printf("  CX: 0x%04x (%d)\n", reg[R_CX], reg[R_CX]);
+                printf("  DX: 0x%04x (%d)\n", reg[R_DX], reg[R_DX]);
+                printf("  SP: 0x%04x (%d)\n", reg[R_SP], reg[R_SP]);
+                printf("  BP: 0x%04x (%d)\n", reg[R_BP], reg[R_BP]);
+                printf("  SI: 0x%04x (%d)\n", reg[R_SI], reg[R_SI]);
+                printf("  DI: 0x%04x (%d)\n", reg[R_DI], reg[R_DI]);
+                printf("  IP: 0x%04x (%d)\n", reg[R_IP], reg[R_IP]);
+                printf("COND: 0x%04x (%d)\n", reg[R_COND], reg[R_COND]);
+            }
+            if (strcmp(msg, "quit\n") == 0 || strcmp(msg, "exit\n") == 0 || strcmp(msg, "q\n") == 0) exit(1);
+        }
+    }
+    else run(argv[1]);
 }
