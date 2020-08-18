@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h> 
+#include <stdbool.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -56,7 +56,7 @@ enum
     R_COUNT
 };
 
-char* reg_name[R_COUNT] = {"AX", "CX", "DX", "BX", "SP", "BP", "SI", "DI", "IP", "FLAGS"};
+const char* reg_name[R_COUNT] = {"AX", "CX", "DX", "BX", "SP", "BP", "SI", "DI", "IP", "FLAGS"};
 
 // Enum for flags
 // Decimal is simpler to write than 16-bit binary...
@@ -72,6 +72,9 @@ enum
     FL_DF = 1024,
     FL_OF = 2048
 };
+
+#define FL_COUNT 9
+const char* flag_name[FL_COUNT] = {"CF", "PF", "AF", "ZF", "SF", "TF", "IF", "DF", "OF"};
 
 // Staying 16 bit for now
 uint16_t memory[UINT16_MAX+1];
@@ -141,7 +144,7 @@ void cmp(int immsize)
         int8_t imm8;
         fread(&imm8, 1, 1, binary);
         reg[R_IP]++;
-        printf("%d - %d = %d\n", (reg[R_AX] << 8 >> 8), sign_extend(imm8, 8), (reg[R_AX] << 8 >> 8) - sign_extend(imm8, 8));
+        //printf("%d - %d = %d\n", (reg[R_AX] << 8 >> 8), sign_extend(imm8, 8), (reg[R_AX] << 8 >> 8) - sign_extend(imm8, 8));
         update_reg_flags((reg[R_AX] << 8 >> 8) - sign_extend(imm8, 8));
     }
     else if (immsize == 16) {
@@ -221,26 +224,20 @@ void jump(bool condition, int immsize, bool far)
         fseek(binary, immsize/8, SEEK_CUR);
         return;
     }
-    printf("I'm in\n");
-    if (far) {
-        int8_t imm16;
-        fread(&imm16, 2, 1, binary);
-        reg[R_IP]+=2;
-        fseek(binary, imm16, SEEK_SET);
-        reg[R_IP] = imm16;
-    }
+    int loc = SEEK_CUR;
+    if (far) loc = SEEK_SET;
     if (immsize == 8) {
         int8_t imm8;
         fread(&imm8, 1, 1, binary);
         reg[R_IP]++;
-        fseek(binary, imm8, SEEK_CUR);
+        fseek(binary, imm8, loc);
         reg[R_IP] += imm8;
     }
     else if (immsize == 16) {
         int16_t imm16;
         fread(&imm16, 2, 1, binary);
         reg[R_IP]+=2;
-        fseek(binary, imm16, SEEK_CUR);
+        fseek(binary, imm16, loc);
         reg[R_IP] += imm16;
     }
     // TODO: Add register JMP instructions
@@ -258,22 +255,12 @@ void pop(int reg_num)
     reg[R_SP] += 2;
 }
 
-int run(char* filename) {
-    // Initialize stack
-    reg[R_BP] = rand() % (UINT16_MAX + 1);
-    reg[R_SP] = reg[R_BP];
-    
-    binary = fopen(filename, "r");
-    //uint8_t signature; // Avoid file signature shifting everything over by one.
-    //fread(&signature, 1, 1, binary);
-    reg[R_AX] = 0;
-    reg[R_CX] = 1;
-    for (reg[R_IP] = 0x0000; reg[R_IP] < fsize(filename);) {
+int step(bool verbose) {
+   
         uint8_t op;
         fread(&op, 1, 1, binary);
         reg[R_IP]++;
-        printf("Read opcode 0x%02x\n", op);
-        printf("IP is 0x%04x\n", reg[R_IP]);
+        if (verbose) printf("Read opcode 0x%02x\n", op);
         switch (op) {
         case 0x00:
             std_op(add, 0);
@@ -425,6 +412,18 @@ int run(char* filename) {
         case 0x75:
             jump((reg[R_FLAGS] & FL_ZF) == FL_ZF, 8, false);
             break;
+        case 0x78:
+            jump((reg[R_FLAGS] & FL_SF) == FL_SF, 8, false);
+            break;
+        case 0x79:
+            jump((reg[R_FLAGS] | ~FL_SF) == ~FL_SF, 8, false);
+            break;
+        case 0x7A:
+            jump((reg[R_FLAGS] & FL_PF) == FL_PF, 8, false);
+            break;
+        case 0x7B:
+            jump((reg[R_FLAGS] | ~FL_ZF) == ~FL_ZF, 8, false);
+            break;
         case 0xEB:
             jump(true, 8, false);
             break;
@@ -438,8 +437,20 @@ int run(char* filename) {
             printf("Bad opcode 0x%02x at 0x%02x! Skipping...\n", op, reg[R_IP]);
             break;
         }
-    }
     return 0;
+}
+
+int run(char* filename)
+{
+    // Initialize stack
+    reg[R_BP] = rand() % (UINT16_MAX + 1);
+    reg[R_SP] = reg[R_BP];
+    binary = fopen(filename, "r");
+    //uint8_t signature; // Avoid file signature shifting everything over by one.
+    //fread(&signature, 1, 1, binary);
+    for (reg[R_IP] = 0x0000; reg[R_IP] < fsize(filename);) {
+        step(false);
+    }
 }
 
 int main(int argc, char** argv)
@@ -452,6 +463,7 @@ int main(int argc, char** argv)
     for (int i = 0; i < argc; i++) if (strcmp(argv[i], "-i") == 0) imode = 1;
     if (imode) {
         char msg[MAX_INPUT] = "";
+        bool init = false;
         printf("VM 0.001 interactive interface\n-\n");
         while (1) {
             printf("(vm) ");
@@ -463,15 +475,26 @@ int main(int argc, char** argv)
                 for (int i = 0; i < R_COUNT; i++) printf("%5s: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg_name[i], reg[i], reg[i], PRINTF_BYTE_TO_BINARY_INT16(reg[i]));
             }
             else if (strcmp(command, "flags\n") == 0) {
-                printf("PF: ");
-                if ((reg[R_FLAGS] & FL_PF) == FL_PF) printf("1 (Even)\n");
-                else printf("0 (Odd)\n");
-                printf("ZF: ");
-                if ((reg[R_FLAGS] & FL_ZF) == FL_ZF) printf("1 (Zero)\n");
-                else printf("0 (Nonzero)\n");
-                printf("SF: ");
-                if ((reg[R_FLAGS] & FL_SF) == FL_SF) printf("1 (Negative)\n");
-                else printf("0 (Positive)\n");
+                printf("PF: %d\n", (reg[R_FLAGS] & FL_PF) == FL_PF);
+                printf("ZF: %d\n", (reg[R_FLAGS] & FL_ZF) == FL_ZF);
+                printf("SF: %d\n", (reg[R_FLAGS] & FL_SF) == FL_SF);
+            }
+            else if (strcmp(command, "step\n") == 0) {
+                if (!init) {
+                    reg[R_BP] = rand() % (UINT16_MAX + 1);
+                    reg[R_SP] = reg[R_BP];
+                    binary = fopen(argv[1], "r");
+                    reg[R_IP] = 0;
+                    printf("Initialized program.\n");
+                    init = true;
+                }
+                else {
+                    if (reg[R_IP] < fsize(argv[1])) step(true);
+                    else {
+                        printf("Program end.\n");
+                        init = false;
+                    }
+                }
             }
             else if (strcmp(msg, "quit\n") == 0 || strcmp(msg, "exit\n") == 0 || strcmp(msg, "q\n") == 0) exit(1);
         }
