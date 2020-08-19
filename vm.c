@@ -4,7 +4,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <readline/readline.h>
+#include <readline/history.h>
 #include <sys/stat.h>
+#include <math.h>
 #include <sys/types.h>
 
 // Hacky %b for printf from stackoverflow
@@ -77,7 +80,7 @@ enum
 const char* flag_name[FL_COUNT] = {"CF", "PF", "AF", "ZF", "SF", "TF", "IF", "DF", "OF"};
 
 // Staying 16 bit for now
-uint16_t memory[UINT16_MAX+1];
+uint16_t memory[UINT16_MAX+2];
 uint16_t reg[R_COUNT];
 
 FILE* binary;
@@ -252,7 +255,6 @@ void std_op(void(*op)(uint16_t*, uint16_t), int variant)
 
 void jump(bool condition, int immsize, bool far)
 {
-    printf("condition %d (t %d f %d)\n", condition, true, false);
     if (!condition) {
         reg[R_IP]+=immsize/8;
         fseek(binary, immsize/8, SEEK_CUR);
@@ -301,7 +303,7 @@ int run(char* filename)
     //uint8_t signature; // Avoid file signature shifting everything over by one.
     //fread(&signature, 1, 1, binary);
     for (reg[R_IP] = 0x0000; reg[R_IP] < fsize(filename);) {
-        step(false);
+        step(true, false);
     }
     return 0;
 }
@@ -315,24 +317,33 @@ int main(int argc, char** argv)
     }
     for (int i = 0; i < argc; i++) if (strcmp(argv[i], "-i") == 0) imode = 1;
     if (imode) {
-        char msg[MAX_INPUT] = "";
         bool init = false;
-        printf("VM 0.001 interactive interface\n-\n");
+        rl_bind_key('\t', rl_insert);
+        printf("\nVM 0.001 interactive interface\n-\n");
         while (1) {
-            printf("(vm) ");
-            fgets(msg, MAX_INPUT, stdin);
-            char* command = strtok(msg," ");
-            if (strcmp(command, "run\n") == 0) run(argv[1]);
-            else if (strcmp(command, "registers\n") == 0) {
+            char* msg = "default";
+            msg = readline ("\033[1;36m(vm)\033[0m ");
+            if (strlen(msg) > 0) add_history(msg);
+            if (strcmp(msg, "run") == 0) {
+                run(argv[1]);
+                printf("Execution complete!\n");
+            }
+            else if (strcmp(msg, "specs") == 0) {
+                printf("CPU type: 16 bit\n");
+                printf("Memory: %d KB\n", (int)round((float)(2*UINT16_MAX)/1024));
+                printf("# of supported opcodes: 61\n"); // TODO: Fix specs code
+            }
+            else if (strcmp(msg, "registers") == 0) {
                 printf("       Hex    │ base10 │ Binary\n");
                 for (int i = 0; i < R_COUNT; i++) printf("%5s: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg_name[i], reg[i], reg[i], PRINTF_BYTE_TO_BINARY_INT16(reg[i]));
             }
-            else if (strcmp(command, "flags\n") == 0) {
+            else if (strcmp(msg, "flags") == 0) {
+                printf("Full FLAG register: "PRINTF_BINARY_PATTERN_INT16"\n", PRINTF_BYTE_TO_BINARY_INT16(reg[R_FLAGS]));
                 printf("PF: %d\n", (reg[R_FLAGS] & FL_PF) == FL_PF);
                 printf("ZF: %d\n", (reg[R_FLAGS] & FL_ZF) == FL_ZF);
                 printf("SF: %d\n", (reg[R_FLAGS] & FL_SF) == FL_SF);
             }
-            else if (strcmp(command, "stack\n") == 0) {
+            else if (strcmp(msg, "stack") == 0) {
                 for (int i = reg[R_SP]; i < reg[R_BP]; i+=1) {
                     printf("        --------\n");
                     printf("0x%04x:  0x%04x ", i, memory[i]);
@@ -344,7 +355,7 @@ int main(int argc, char** argv)
                 printf(" <- BP");
                 printf("\n        --------\n");
             }
-            else if (strcmp(command, "step\n") == 0) {
+            else if (strcmp(msg, "step") == 0) {
                 if (!init) {
                     reg[R_BP] = rand() % (UINT16_MAX + 1);
                     reg[R_SP] = reg[R_BP];
@@ -354,14 +365,14 @@ int main(int argc, char** argv)
                     init = true;
                 }
                 else {
-                    if (reg[R_IP] < fsize(argv[1])) step(true);
+                    if (reg[R_IP] < fsize(argv[1])) step(true, true);
                     else {
                         printf("Program end.\n");
                         init = false;
                     }
                 }
             }
-            else if (strcmp(msg, "quit\n") == 0 || strcmp(msg, "exit\n") == 0 || strcmp(msg, "q\n") == 0) exit(1);
+            /* else if (strcmp(msg, "quit") == 0 || strcmp(msg, "exit") == 0 || strcmp(msg, "q") == 0) exit(1); */
         }
     }
     else run(argv[1]);

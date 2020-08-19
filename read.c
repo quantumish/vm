@@ -3,7 +3,7 @@
 #define MULTIMAP_END(x) break;
 #define EXTENSION_MAP(ext, func) if ((modrm | (ext << 3)) == modrm) func
 
-int step(bool verbose) {
+int step(bool forgiving, bool verbose) {
     uint8_t op;
     uint8_t modrm;
     fread(&op, 1, 1, binary);
@@ -76,7 +76,8 @@ int step(bool verbose) {
         EXTENSION_MAP(6, ax_op(udiv, 16, modrm));
     MULTIMAP_END(0xF7)
     default:
-        printf("Bad opcode 0x%02x at 0x%02x! Skipping...\n", op, reg[R_IP]);
+        if (forgiving) printf("Bad opcode 0x%02x at 0x%02x! Skipping...\n", op, reg[R_IP]);
+        else return 1;
         break;
     }
     return 0;
