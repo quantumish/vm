@@ -80,8 +80,8 @@ enum
 const char* flag_name[FL_COUNT] = {"CF", "PF", "AF", "ZF", "SF", "TF", "IF", "DF", "OF"};
 
 // Staying 16 bit for now
-uint16_t memory[UINT16_MAX+2];
-uint16_t reg[R_COUNT];
+uint64_t memory[UINT16_MAX+2];
+uint64_t reg[R_COUNT];
 
 FILE* binary;
 
@@ -103,7 +103,7 @@ void update_flags(uint16_t r)
     else reg[R_FLAGS] &= ~FL_SF;
 }
 
-uint16_t sign_extend(uint16_t x, int bit_count)
+uint64_t sign_extend(uint64_t x, int bit_count)
 {
     if ((x >> (bit_count - 1)) & 1) {
         x |= (0xFFFF << bit_count);
@@ -304,6 +304,7 @@ int run(char* filename)
     //fread(&signature, 1, 1, binary);
     for (reg[R_IP] = 0x0000; reg[R_IP] < fsize(filename);) {
         step(true, false);
+        exit(1);
     }
     return 0;
 }

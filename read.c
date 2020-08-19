@@ -1,11 +1,13 @@
 #define MAP_OPCODE(x, func) case x: func; break;
 #define MULTIMAP_BEGIN(x) case x: fread(&modrm, 1, 1, binary); reg[R_IP]++;
 #define MULTIMAP_END(x) break;
-#define EXTENSION_MAP(ext, func) if ((modrm | (ext << 3)) == modrm) func
+#define MAP_EXTENSION(ext, func) if ((modrm | (ext << 3)) == modrm) func
+#define DEF_PREFIX(x) case x: fread(&prefix, 1, 1, binary); reg[RIP]++;
 
 int step(bool forgiving, bool verbose) {
     uint8_t op;
-    uint8_t modrm;
+    uint8_t prefix;
+    struct args op_args = {NULL, NULL, NULL};
     fread(&op, 1, 1, binary);
     reg[R_IP]++;
     if (verbose) printf("Read opcode 0x%02x\n", op);
@@ -42,6 +44,22 @@ int step(bool forgiving, bool verbose) {
         MAP_OPCODE(0x35, std_op(xor, 5));
         MAP_OPCODE(0x3C, cmp(8));
         MAP_OPCODE(0x3D, cmp(8));
+        DEF_PREFIX(0x40);
+        DEF_PREFIX(0x41);
+        DEF_PREFIX(0x42);
+        DEF_PREFIX(0x43);
+        DEF_PREFIX(0x44);
+        DEF_PREFIX(0x45);
+        DEF_PREFIX(0x46);
+        DEF_PREFIX(0x47);
+        DEF_PREFIX(0x48);
+        DEF_PREFIX(0x49);
+        DEF_PREFIX(0x4A);
+        DEF_PREFIX(0x4B);
+        DEF_PREFIX(0x4C);
+        DEF_PREFIX(0x4D);
+        DEF_PREFIX(0x4E);
+        DEF_PREFIX(0x4F);
         MAP_OPCODE(0x50, push(0));
         MAP_OPCODE(0x51, push(1));
         MAP_OPCODE(0x52, push(2));
@@ -68,16 +86,16 @@ int step(bool forgiving, bool verbose) {
         MAP_OPCODE(0xEB, jump(true, 8, false));
         MAP_OPCODE(0xEA, jump(true, 16, true));
     MULTIMAP_BEGIN(0xF6)
-        EXTENSION_MAP(4, ax_op(mul, 8, modrm));
-        EXTENSION_MAP(6, ax_op(udiv, 8, modrm));
+        MAP_EXTENSION(4, ax_op(mul, 8, modrm));
+        MAP_EXTENSION(6, ax_op(udiv, 8, modrm));
     MULTIMAP_END(0xF6)
     MULTIMAP_BEGIN(0xF7)
-        EXTENSION_MAP(4, ax_op(mul, 16, modrm));
-        EXTENSION_MAP(6, ax_op(udiv, 16, modrm));
+        MAP_EXTENSION(4, ax_op(mul, 16, modrm));
+        MAP_EXTENSION(6, ax_op(udiv, 16, modrm));
     MULTIMAP_END(0xF7)
     default:
         if (forgiving) printf("Bad opcode 0x%02x at 0x%02x! Skipping...\n", op, reg[R_IP]);
-        else return 1;
+        else exit(1);
         break;
     }
     return 0;
