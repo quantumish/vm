@@ -337,19 +337,17 @@ void pop(int reg_num)
 
 #include "read.c"
 
-int run(char* filename)
+int run(char* filename, long offset)
 {
     // Initialize stack
     reg[R_RBP] = rand() % (UINT16_MAX + 1);
     reg[R_RSP] = reg[R_RBP];
-    reg[R_RAX] = 25769803776;
-    reg[R_RBX] = 12884901888;
     binary = fopen(filename, "r ");
     //uint8_t signature; // Avoid file signature shifting everything over by one.
     //fread(&signature, 1, 1, binary);
-    fseek(binary, 0xffc, SEEK_SET);
-    for (reg[R_RIP] = 0xffc; reg[R_RIP] < fsize(filename);) {
-        if (step(true, true) == 1) return 1;
+    fseek(binary, offset, SEEK_SET);
+    for (reg[R_RIP] = offset; reg[R_RIP] < fsize(filename);) {
+        if (step(true, false) == 1) return 1;
     }
     return 0;
 }
@@ -357,8 +355,8 @@ int run(char* filename)
 int main(int argc, char** argv)
 {
     bool imode = false;
-    if (argc < 2) {
-        printf("Invalid command: need binary file input!\n");
+    if (argc < 3) {
+        printf("Invalid command: need binary file input + entry offset!\n");
         return 1;
     }
     for (int i = 0; i < argc; i++) if (strcmp(argv[i], "-i") == 0) imode = 1;
@@ -371,7 +369,7 @@ int main(int argc, char** argv)
             msg = readline ("\033[1;36m(vm)\033[0m ");
             if (strlen(msg) > 0) add_history(msg);
             if (strcmp(msg, "run") == 0) {
-                run(argv[1]);
+                run(argv[1], strtol(argv[2], NULL, 10));
                 printf("Execution complete!\n");
             }
             else if (strcmp(msg, "specs") == 0) {
@@ -405,11 +403,10 @@ int main(int argc, char** argv)
                 if (!init) {
                     reg[R_RBP] = rand() % (UINT16_MAX + 1);
                     reg[R_RSP] = reg[R_RBP];
-                    reg[R_RAX] = 25769803776;
-                    reg[R_RBX] = 12884901888;
                     binary = fopen(argv[1], "r");
-                    fseek(binary, 0xffc, SEEK_SET);
-                    reg[R_RIP] = 0xffc;
+                    long offset = strtol(argv[2], NULL, 10);
+                    fseek(binary, offset, SEEK_SET);
+                    reg[R_RIP] = offset;
                     printf("Initialized program.\n");
                     init = true;
                 }
@@ -429,5 +426,5 @@ int main(int argc, char** argv)
             else if (strcmp(msg, "quit") == 0 || strcmp(msg, "exit") == 0 || strcmp(msg, "q") == 0) exit(1);
         }
     }
-    else run(argv[1]);
+    else run(argv[1], strtol(argv[2], NULL, 10));
 }
