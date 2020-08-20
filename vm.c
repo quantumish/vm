@@ -114,60 +114,66 @@ void update_flags(uint64_t r)
 uint64_t sign_extend(uint64_t x, int bit_count)
 {
     if ((x >> (bit_count - 1)) & 1) {
-        x |= (0xFFFF << bit_count);
+        x |= ((int)pow(2, 64) << bit_count);
     }
     return x;
 }
 
-void add(uint64_t* a, uint64_t b)
+void add(uint64_t* a, uint64_t b, size_t portion)
 {
-    *a += b;
+    uint64_t a_portion = *a & (int)pow(2, portion);
+    a_portion += b & (int)pow(2, portion);
+    *a |= a_portion;
 }
 
-void sub(uint64_t* a, uint64_t b)
+void sub(uint64_t* a, uint64_t b, size_t portion)
 {
-    *a += b;
+    uint64_t a_portion = *a & (int)pow(2, portion);
+    a_portion += b & (int)pow(2, portion);
+    *a |= a_portion;
 }
 
-void mul(uint64_t* a, uint64_t b)
+void mul(uint64_t* a, uint64_t b, size_t portion)
 {
-    *a *= b;
+    uint64_t a_portion = *a & (int)pow(2, portion);
+    a_portion *= b & (int)pow(2, portion);
+    *a |= a_portion;
+
 }
 
-void udiv(uint64_t* a, uint64_t b)
+void udiv(uint64_t* a, uint64_t b, size_t portion)
 {
-    *a /= b;
+    uint64_t a_portion = *a & (int)pow(2, portion);
+    a_portion /= b & (int)pow(2, portion);
+    *a |= a_portion;
 }
 
-void and(uint64_t* a, uint64_t b)
+void and(uint64_t* a, uint64_t b, size_t portion)
 {
-    *a &= b;
+    uint64_t a_portion = *a & (int)pow(2, portion);
+    a_portion &= b & (int)pow(2, portion);
+    *a |= a_portion;
 } 
  
-void or(uint64_t* a, uint64_t b)
+void or(uint64_t* a, uint64_t b, size_t portion)
 {
+    uint64_t a_portion = *a & (int)pow(2, portion);
     *a |= b;
+    *a |= a_portion;
 }
 
-void xor(uint64_t* a, uint64_t b)
+void xor(uint64_t* a, uint64_t b, size_t portion)
 {
-    *a ^= b;
+    uint64_t a_portion = *a & (int)pow(2, portion);
+    a_portion ^= b & (int)pow(2, portion);
+    *a |= a_portion;
 }
 
-void cmp(int immsize)
+void cmp(uint64_t* a, uint64_t b, size_t portion)
 {
-    if (immsize == 8) {
-        int8_t imm8;
-        fread(&imm8, 1, 1, binary);
-        reg[R_RIP]++;
-        update_flags((reg[R_RAX] & 0xFF) - sign_extend(imm8, 8));
-    }
-    else if (immsize == 16) {
-        int16_t imm16;
-        fread(&imm16, 2, 1, binary);
-        reg[R_RIP]+=2;
-        update_flags(reg[R_RAX] - imm16);
-    }
+    uint64_t a_portion = *a & (int)pow(2, portion);
+    a_portion ^= b & (int)pow(2, portion);
+    *a |= a_portion;
 }
 
 // ONLY WORKS FOR 16 BIT
@@ -203,34 +209,34 @@ int get_addr_16bit(uint8_t modrm)
     return addr;
 }
 
-void ax_op(void(*op)(uint64_t*, uint64_t), int regsize, uint8_t modrm)
+void ax_op(void(*op)(uint64_t*, uint64_t, size_t), int regsize, uint8_t modrm)
 {
-    if ((modrm & 0b11000000) == 0b11000000) {
-        // TODO: Check that 8 bit carries dont happen
-        if (regsize == 8) (*op)(&reg[0], reg[modrm & 0b00111000] << 8 >> 8);
-        else (*op)(&reg[0], reg[modrm & 0b00111000]);
-    }
-    else {
-        int addr = get_addr_16bit(modrm);
-        if (regsize == 8) (*op)(&reg[0], memory[addr] << 8 >> 8);
-        else (*op)(&reg[0], memory[addr]);
-    }
-    update_flags(reg[0]);
+    /* if ((modrm & 0b11000000) == 0b11000000) { */
+    /*     // TODO: Check that 8 bit carries dont happen */
+    /*     if (regsize == 8) (*op)(&reg[0], reg[modrm & 0b00111000] << 8 >> 8); */
+    /*     else (*op)(&reg[0], reg[modrm & 0b00111000]); */
+    /* } */
+    /* else { */
+    /*     int addr = get_addr_16bit(modrm); */
+    /*     if (regsize == 8) (*op)(&reg[0], memory[addr] << 8 >> 8); */
+    /*     else (*op)(&reg[0], memory[addr]); */
+    /* } */
+    /* update_flags(reg[0]); */
 }
 
-void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t), int variant)
+void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
 {
     if (variant == 5) {
         if (prefix == 0x66) {
             uint16_t imm16;
             fread(&imm16, 2, 1, binary);
-            (*op)(&reg[0], sign_extend(imm16, 16));
+            (*op)(&reg[0], sign_extend(imm16, 16), 16);
             reg[R_RIP]+=2;
         }
         else {
             uint32_t imm32;
             fread(&imm32, 4, 1, binary);
-            (*op)(&reg[0], sign_extend(imm32, 32));
+            (*op)(&reg[0], sign_extend(imm32, 32), 32);
             reg[R_RIP]+=4;
         }
         update_flags(reg[0]);
@@ -238,7 +244,7 @@ void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t), int variant)
     else if (variant == 4) {
         uint8_t imm8;
         fread(&imm8, 1, 1, binary);
-        (*op)(&reg[0], sign_extend(imm8, 8));
+        (*op)(&reg[0], sign_extend(imm8, 8), 8);
         reg[R_RIP]++;
         update_flags(reg[0]);
     }
@@ -246,23 +252,28 @@ void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t), int variant)
         uint8_t modrm;
         fread(&modrm, 1, 1, binary);
         reg[R_RIP]++;
+        size_t portion;
+        if ((prefix & 0b01001000) == prefix) portion = 64;
+        else if (prefix == 0x66) portion = 16;
+        else if (variant == 0 || variant == 2) portion = 8;
+        else portion = 32;
         if ((modrm & 0b11000000) == 0b11000000) {
             // TODO: Check that 8 bit carries dont happen
-            int op1, op2;
-            if ((prefix & 0b01001000) == 0b01001000) 
-            if (variant == 0) (*op)(&reg[op1], reg[modrm & 0b00111000] & 0xFF);
-            else if (variant == 1) (*op)(&reg[op1], reg[modrm & 0b00111000]);
-            else if (variant == 2) (*op)(&reg[modrm & 0b00111000], reg[modrm & 0b00000111] & 0xFF);
-            else if (variant == 3) (*op)(&reg[modrm & 0b00111000], reg[modrm & 0b00000111]);
-            if (variant == 0 || variant == 1) update_flags(reg[modrm & 0b00000111]);
+            int op1 = modrm & 0b00111000, op2 = modrm & 0b00000111;
+            if ((prefix & 0b01000100) != 0b01000000) op1 = (op1 << 1) + 1;
+            if ((prefix & 0b01000100) != 0b01000000) op2 = (op2 << 1) + 1;
+            if (variant < 2) (*op)(&reg[op2], reg[op1], portion);
+            else (*op)(&reg[op1], reg[op2], portion);
+            if (variant < 2) update_flags(reg[modrm & 0b00000111]);
             else update_flags(reg[modrm & 0b00111000]);
         }
         else {
+            // TODO: Actually implement 64 bit addressing
             int addr = get_addr_16bit(modrm);
-            if (variant == 0) (*op)(&memory[addr], reg[modrm & 0b00111000] & 0xFF);
-            else if (variant == 1) (*op)(&memory[addr], reg[modrm & 0b00111000]); 
-            else if (variant == 2) (*op)(&reg[modrm & 0b00111000], memory[addr] & 0xFF);
-            else if (variant == 3) (*op)(&reg[modrm & 0b00111000], memory[addr]);
+            if (variant == 0) (*op)(&memory[addr], reg[modrm & 0b00111000] & 0xFF, portion);
+            else if (variant == 1) (*op)(&memory[addr], reg[modrm & 0b00111000], portion); 
+            else if (variant == 2) (*op)(&reg[modrm & 0b00111000], memory[addr] & 0xFF, portion);
+            else if (variant == 3) (*op)(&reg[modrm & 0b00111000], memory[addr], portion);
             if (variant == 0 || variant == 1) update_flags(reg[modrm & 0b00111000]);
             else update_flags(memory[addr]);
         }
@@ -351,11 +362,11 @@ int main(int argc, char** argv)
                 printf("# of supported opcodes: 61\n"); // TODO: Fix specs code
             }
             else if (strcmp(msg, "registers") == 0) {
-                printf("       Hex    │ base10 │ Binary\n");
-                for (int i = 0; i < R_COUNT; i++) printf("%5s: 0x%04llx │ %05llu  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg_name[i], reg[i], reg[i], PRINTF_BYTE_TO_BINARY_INT16(reg[i]));
+                printf("       Hex                │ base10 │ Binary\n");
+                for (int i = 0; i < R_COUNT; i++) printf("%5s: 0x%016llx │ %05llu  │ "PRINTF_BINARY_PATTERN_INT64"\n", reg_name[i], reg[i], reg[i], PRINTF_BYTE_TO_BINARY_INT64(reg[i]));
             }
             else if (strcmp(msg, "flags") == 0) {
-                printf("Full FLAG register: "PRINTF_BINARY_PATTERN_INT16"\n", PRINTF_BYTE_TO_BINARY_INT16(reg[R_FLAGS]));
+                printf("Full FLAG register: "PRINTF_BINARY_PATTERN_INT64"\n", PRINTF_BYTE_TO_BINARY_INT64(reg[R_FLAGS]));
                 printf("PF: %d\n", (reg[R_FLAGS] & FL_PF) == FL_PF);
                 printf("ZF: %d\n", (reg[R_FLAGS] & FL_ZF) == FL_ZF);
                 printf("SF: %d\n", (reg[R_FLAGS] & FL_SF) == FL_SF);
@@ -368,7 +379,7 @@ int main(int argc, char** argv)
                     printf("\n");
                 }
                 printf("        --------\n");
-                printf("0x%04llx:  0x%04llx ", reg[R_RBP], memory[reg[R_RBP]]);
+                printf("0x%016llx:  0x%016llx ", reg[R_RBP], memory[reg[R_RBP]]);
                 printf(" <- BP");
                 printf("\n        --------\n");
             }
@@ -378,6 +389,7 @@ int main(int argc, char** argv)
                     reg[R_RSP] = reg[R_RBP];
                     binary = fopen(argv[1], "r");
                     reg[R_RIP] = 0;
+                    reg[R_RAX] = 0x1AA;
                     printf("Initialized program.\n");
                     init = true;
                 }
