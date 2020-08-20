@@ -121,68 +121,78 @@ uint64_t sign_extend(uint64_t x, int bit_count)
 
 void add(uint64_t* a, uint64_t b, size_t portion)
 {
-    uint64_t a_portion = *a & (int)pow(2, portion);
-    printf("%llx (%d of %llx) + %llx\n", a_portion, portion, *a, b);
-    a_portion += (b & (int)pow(2, portion));
+    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
+    a_portion += (b & (uint64_t)pow(2, portion)-1);
     update_flags(a_portion);
-    *a = *a & 0;
-    printf("%llx\n", ((int)pow(2, portion) << portion));
-    printf("agh %llx %llx\n", *a, a_portion);
+    if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
+    else *a &= 0;
     *a |= a_portion;
 }
 
 void sub(uint64_t* a, uint64_t b, size_t portion)
 {
-    uint64_t a_portion = *a & (int)pow(2, portion);
-    a_portion += b & (int)pow(2, portion);
+    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
+    a_portion += b & (uint64_t)pow(2, portion)-1;;
     update_flags(a_portion);
+    if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
+    else *a &= 0;
     *a |= a_portion;
 }
 
 void mul(uint64_t* a, uint64_t b, size_t portion)
 {
-    uint64_t a_portion = *a & (int)pow(2, portion);
-    a_portion *= b & (int)pow(2, portion);
+    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
+    a_portion *= b & (uint64_t)pow(2, portion)-1;
     update_flags(a_portion);
+    if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
+    else *a &= 0;
     *a |= a_portion;
 }
 
 void udiv(uint64_t* a, uint64_t b, size_t portion)
 {
-    uint64_t a_portion = *a & (int)pow(2, portion);
-    a_portion /= b & (int)pow(2, portion);
+    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
+    a_portion /= b & (uint64_t)pow(2, portion)-1;
     update_flags(a_portion);
+    if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
+    else *a &= 0;
     *a |= a_portion;
 }
 
 void and(uint64_t* a, uint64_t b, size_t portion)
 {
-    uint64_t a_portion = *a & (int)pow(2, portion);
-    a_portion &= b & (int)pow(2, portion);
+    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
+    a_portion &= b & (uint64_t)pow(2, portion)-1;
     update_flags(a_portion);
+    if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
+    else *a &= 0;
     *a |= a_portion;
 } 
  
 void or(uint64_t* a, uint64_t b, size_t portion)
 {
-    uint64_t a_portion = *a & (int)pow(2, portion);
+    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
     a_portion |= b;
     update_flags(a_portion);
+    if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
+    else *a &= 0;
     *a |= a_portion;
 }
 
 void xor(uint64_t* a, uint64_t b, size_t portion)
 {
-    uint64_t a_portion = *a & (int)pow(2, portion);
-    a_portion ^= b & (int)pow(2, portion);
+    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
+    a_portion ^= b & (uint64_t)pow(2, portion)-1;
     update_flags(a_portion);
+    if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
+    else *a &= 0;
     *a |= a_portion;
 }
 
 void cmp(uint64_t* a, uint64_t b, size_t portion)
 {
-    uint64_t a_portion = *a & (int)pow(2, portion);
-    a_portion -= b & (int)pow(2, portion);
+    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
+    a_portion -= b & (uint64_t)pow(2, portion)-1;
     update_flags(a_portion);
 }
 
@@ -267,16 +277,13 @@ void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
         else if (prefix == 0x66) portion = 16;
         else if (variant == 0 || variant == 2) portion = 8;
         else portion = 32;
-        printf("Portion is %d (as %llx & %llx = %llx)", portion, prefix, 0b01001000, prefix);
         if ((modrm & 0b11000000) == 0b11000000) {
             // TODO: Check that 8 bit carries dont happen
-            printf("We made it %llx %llx\n", reg[R_RAX], reg[R_RBX]);
             int op1 = modrm & 0b00111000, op2 = modrm & 0b00000111;
             if ((prefix & 0b01000100) != 0b01000000) op1 = (op1 << 1) + 1;
             if ((prefix & 0b01000100) != 0b01000000) op2 = (op2 << 1) + 1;
             if (variant < 2) (*op)(&reg[op2], reg[op1], portion);
             else (*op)(&reg[op1], reg[op2], portion);
-            printf("End of add %llx %llx\n", reg[R_RAX], reg[R_RBX]);
         }
         else {
             // TODO: Actually implement 64 bit addressing
@@ -288,7 +295,6 @@ void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
 
         }
     }
-    printf("End of std op %llx %llx\n", reg[R_RAX], reg[R_RBX]);
 }
 
 void jump(bool condition, int immsize, bool far)
@@ -374,8 +380,8 @@ int main(int argc, char** argv)
                 printf("# of supported opcodes: 82\n"); // TODO: Fix specs code
             }
             else if (strcmp(msg, "registers") == 0) {
-                printf("       Hex                │ base10 │ Binary\n");
-                for (int i = 0; i < R_COUNT; i++) printf("%5s: 0x%016llx │ %05llu  │ "PRINTF_BINARY_PATTERN_INT64"\n", reg_name[i], reg[i], reg[i], PRINTF_BYTE_TO_BINARY_INT64(reg[i]));
+                printf("       Hex              │ base10               │ Binary\n");
+                for (int i = 0; i < R_COUNT; i++) printf("%5s: %16llx │ %20llu │ "PRINTF_BINARY_PATTERN_INT64"\n", reg_name[i], reg[i], reg[i], PRINTF_BYTE_TO_BINARY_INT64(reg[i]));
             }
             else if (strcmp(msg, "flags") == 0) {
                 printf("Full FLAG register: "PRINTF_BINARY_PATTERN_INT64"\n", PRINTF_BYTE_TO_BINARY_INT64(reg[R_FLAGS]));
