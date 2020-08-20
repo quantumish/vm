@@ -1,12 +1,12 @@
-#define MAP_OPCODE(x, func) case x: func; break;
+#define MAP_OPCODE(x, func) case x: func; prefix = NULL; break;
 #define MULTIMAP_BEGIN(x) case x: fread(&modrm, 1, 1, binary); reg[R_RIP]++;
 #define MULTIMAP_END(x) break;
 #define MAP_EXTENSION(ext, func) if ((modrm | (ext << 3)) == modrm) func
-#define DEF_PREFIX(x) case x: fread(&prefix, 1, 1, binary); reg[R_RIP]++;
+#define DEF_PREFIX(x) case x: prefix = op; reg[R_RIP]++; break;
 
+uint8_t prefix = NULL;
 int step(bool forgiving, bool verbose) {
     uint8_t op;
-    uint8_t prefix = NULL;
     uint8_t modrm;
     fread(&op, 1, 1, binary);
     reg[R_RIP]++;
@@ -87,6 +87,7 @@ int step(bool forgiving, bool verbose) {
         MAP_OPCODE(0x79, jump((reg[R_FLAGS] | ~FL_SF) == ~FL_SF, 8, false));
         MAP_OPCODE(0x7A, jump((reg[R_FLAGS] & FL_PF) == FL_PF, 8, false));
         MAP_OPCODE(0x7B, jump((reg[R_FLAGS] | ~FL_PF) == ~FL_PF, 8, false));
+        MAP_OPCODE(0xC3, return 1);
         MAP_OPCODE(0xE9, jump(true, 16, false));
         MAP_OPCODE(0xEB, jump(true, 8, false));
         MAP_OPCODE(0xEA, jump(true, 16, true));
@@ -99,7 +100,7 @@ int step(bool forgiving, bool verbose) {
         MAP_EXTENSION(6, ax_op(udiv, 16, modrm));
     MULTIMAP_END(0xF7)
     default:
-        if (forgiving) printf("Bad opcode 0x%02x at 0x%02llx! Skipping...\n", op, reg[R_RIP]);
+        if (forgiving) printf("Bad opcode 0x%02x at 0x%02llx! Skipping...\n", op, reg[R_RIP]-1);
         else exit(1);
         break;
     }
