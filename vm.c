@@ -123,6 +123,7 @@ void add(uint64_t* a, uint64_t b, size_t portion)
 {
     uint64_t a_portion = *a & (int)pow(2, portion);
     a_portion += b & (int)pow(2, portion);
+    update_flags(a_portion);
     *a |= a_portion;
 }
 
@@ -130,6 +131,7 @@ void sub(uint64_t* a, uint64_t b, size_t portion)
 {
     uint64_t a_portion = *a & (int)pow(2, portion);
     a_portion += b & (int)pow(2, portion);
+    update_flags(a_portion);
     *a |= a_portion;
 }
 
@@ -137,14 +139,15 @@ void mul(uint64_t* a, uint64_t b, size_t portion)
 {
     uint64_t a_portion = *a & (int)pow(2, portion);
     a_portion *= b & (int)pow(2, portion);
+    update_flags(a_portion);
     *a |= a_portion;
-
 }
 
 void udiv(uint64_t* a, uint64_t b, size_t portion)
 {
     uint64_t a_portion = *a & (int)pow(2, portion);
     a_portion /= b & (int)pow(2, portion);
+    update_flags(a_portion);
     *a |= a_portion;
 }
 
@@ -152,13 +155,15 @@ void and(uint64_t* a, uint64_t b, size_t portion)
 {
     uint64_t a_portion = *a & (int)pow(2, portion);
     a_portion &= b & (int)pow(2, portion);
+    update_flags(a_portion);
     *a |= a_portion;
 } 
  
 void or(uint64_t* a, uint64_t b, size_t portion)
 {
     uint64_t a_portion = *a & (int)pow(2, portion);
-    *a |= b;
+    a_portion |= b;
+    update_flags(a_portion);
     *a |= a_portion;
 }
 
@@ -166,14 +171,15 @@ void xor(uint64_t* a, uint64_t b, size_t portion)
 {
     uint64_t a_portion = *a & (int)pow(2, portion);
     a_portion ^= b & (int)pow(2, portion);
+    update_flags(a_portion);
     *a |= a_portion;
 }
 
 void cmp(uint64_t* a, uint64_t b, size_t portion)
 {
     uint64_t a_portion = *a & (int)pow(2, portion);
-    a_portion ^= b & (int)pow(2, portion);
-    *a |= a_portion;
+    a_portion -= b & (int)pow(2, portion);
+    update_flags(a_portion);
 }
 
 // ONLY WORKS FOR 16 BIT
@@ -264,8 +270,6 @@ void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
             if ((prefix & 0b01000100) != 0b01000000) op2 = (op2 << 1) + 1;
             if (variant < 2) (*op)(&reg[op2], reg[op1], portion);
             else (*op)(&reg[op1], reg[op2], portion);
-            if (variant < 2) update_flags(reg[modrm & 0b00000111]);
-            else update_flags(reg[modrm & 0b00111000]);
         }
         else {
             // TODO: Actually implement 64 bit addressing
@@ -274,8 +278,7 @@ void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
             else if (variant == 1) (*op)(&memory[addr], reg[modrm & 0b00111000], portion); 
             else if (variant == 2) (*op)(&reg[modrm & 0b00111000], memory[addr] & 0xFF, portion);
             else if (variant == 3) (*op)(&reg[modrm & 0b00111000], memory[addr], portion);
-            if (variant == 0 || variant == 1) update_flags(reg[modrm & 0b00111000]);
-            else update_flags(memory[addr]);
+
         }
     }
 }

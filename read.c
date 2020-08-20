@@ -42,8 +42,12 @@ int step(bool forgiving, bool verbose) {
         MAP_OPCODE(0x33, std_op(prefix, xor, 3));
         MAP_OPCODE(0x34, std_op(prefix, xor, 4));
         MAP_OPCODE(0x35, std_op(prefix, xor, 5));
-        MAP_OPCODE(0x3C, cmp(8));
-        MAP_OPCODE(0x3D, cmp(8));
+        MAP_OPCODE(0x38, std_op(prefix, cmp, 0));
+        MAP_OPCODE(0x39, std_op(prefix, cmp, 1));
+        MAP_OPCODE(0x3A, std_op(prefix, cmp, 2));
+        MAP_OPCODE(0x3B, std_op(prefix, cmp, 3));
+        MAP_OPCODE(0x3C, std_op(prefix, cmp, 4));
+        MAP_OPCODE(0x3D, std_op(prefix, cmp, 5));
         DEF_PREFIX(0x40);
         DEF_PREFIX(0x41);
         DEF_PREFIX(0x42);
