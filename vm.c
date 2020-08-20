@@ -46,20 +46,28 @@
 // Define registers
 enum
 {
-    R_AX = 0,
-    R_CX,
-    R_DX,
-    R_BX,
-    R_SP,
-    R_BP,
-    R_SI,
-    R_DI,
-    R_IP,
+    R_RAX = 0,
+    R_RCX,
+    R_RDX,
+    R_RBX,
+    R_RSP,
+    R_RBP,
+    R_RSI,
+    R_RDI,
+    R_RIP,
+    R_R8,
+    R_R9,
+    R_R10,
+    R_R11,
+    R_R12,
+    R_R13,
+    R_R14,
+    R_R15,
     R_FLAGS,
     R_COUNT
 };
 
-const char* reg_name[R_COUNT] = {"AX", "CX", "DX", "BX", "SP", "BP", "SI", "DI", "IP", "FLAGS"};
+const char* reg_name[R_COUNT] = {"RAX", "RCX", "RDX", "RBX", "RSP", "RBP", "RSI", "RDI", "RIP", "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15", "FLAGS"};
 
 // Enum for flags
 // Decimal is simpler to write than 16-bit binary...
@@ -93,7 +101,7 @@ off_t fsize(const char *filename) {
     return -1; 
 }
 
-void update_flags(uint16_t r)
+void update_flags(uint64_t r)
 {
     if (r % 2 == 0) reg[R_FLAGS] |= FL_PF;
     else reg[R_FLAGS] &= ~FL_PF;
@@ -111,38 +119,37 @@ uint64_t sign_extend(uint64_t x, int bit_count)
     return x;
 }
 
-void add(uint16_t* a, uint16_t b)
+void add(uint64_t* a, uint64_t b)
 {
     *a += b;
 }
 
-void sub(uint16_t* a, uint16_t b)
+void sub(uint64_t* a, uint64_t b)
 {
     *a += b;
 }
 
-void mul(uint16_t* a, uint16_t b)
+void mul(uint64_t* a, uint64_t b)
 {
-    printf("%d * %d\n", *a, b);
     *a *= b;
 }
 
-void udiv(uint16_t* a, uint16_t b)
+void udiv(uint64_t* a, uint64_t b)
 {
     *a /= b;
 }
 
-void and(uint16_t* a, uint16_t b)
+void and(uint64_t* a, uint64_t b)
 {
     *a &= b;
 } 
  
-void or(uint16_t* a, uint16_t b)
+void or(uint64_t* a, uint64_t b)
 {
     *a |= b;
 }
 
-void xor(uint16_t* a, uint16_t b)
+void xor(uint64_t* a, uint64_t b)
 {
     *a ^= b;
 }
@@ -152,100 +159,109 @@ void cmp(int immsize)
     if (immsize == 8) {
         int8_t imm8;
         fread(&imm8, 1, 1, binary);
-        reg[R_IP]++;
-        //printf("%d - %d = %d\n", (reg[R_AX] << 8 >> 8), sign_extend(imm8, 8), (reg[R_AX] << 8 >> 8) - sign_extend(imm8, 8));
-        update_flags((reg[R_AX] << 8 >> 8) - sign_extend(imm8, 8));
+        reg[R_RIP]++;
+        update_flags((reg[R_RAX] & 0xFF) - sign_extend(imm8, 8));
     }
     else if (immsize == 16) {
         int16_t imm16;
         fread(&imm16, 2, 1, binary);
-        reg[R_IP]+=2;
-        update_flags(reg[R_AX] - imm16);
+        reg[R_RIP]+=2;
+        update_flags(reg[R_RAX] - imm16);
     }
 }
 
-int get_addr(uint8_t modrm)
+// ONLY WORKS FOR 16 BIT
+int get_addr_16bit(uint8_t modrm)
 {
     int addr;
-    if ((modrm & 0b00000111) == 0b00000111) addr = reg[R_BX];
-    else if ((modrm & 0b00000111) == 0b000000101) addr = reg[R_DI];
-    else if ((modrm & 0b00000111) == 0b000000100) addr = reg[R_SI];
-    else if ((modrm & 0b00000111) == 0b000000011) addr = reg[R_BP] + reg[R_DI];
-    else if ((modrm & 0b00000111) == 0b000000010) addr = reg[R_BP] + reg[R_SI];
-    else if ((modrm & 0b00000111) == 0b000000001) addr = reg[R_BX] + reg[R_DI];
-    else if ((modrm & 0b00000111) == 0b000000000) addr = reg[R_BX] + reg[R_SI];
+    if ((modrm & 0b00000111) == 0b00000111) addr = reg[R_RBX] & 0xFFFF;
+    else if ((modrm & 0b00000111) == 0b000000101) addr = reg[R_RDI] & 0xFFFF;
+    else if ((modrm & 0b00000111) == 0b000000100) addr = reg[R_RSI] & 0xFFFF;
+    else if ((modrm & 0b00000111) == 0b000000011) addr = (reg[R_RBP] + reg[R_RDI]) & 0xFFFF;
+    else if ((modrm & 0b00000111) == 0b000000010) addr = (reg[R_RBP] + reg[R_RSI]) & 0xFFFF;
+    else if ((modrm & 0b00000111) == 0b000000001) addr = (reg[R_RBX] + reg[R_RDI]) & 0xFFFF;
+    else if ((modrm & 0b00000111) == 0b000000000) addr = (reg[R_RBX] + reg[R_RSI]) & 0xFFFF;
     if ((modrm & 0b01000000) == 0b01000000) {
         uint8_t disp8;
         fread(&disp8, 1, 1, binary);
         addr += disp8;
-        reg[R_IP]++;
+        reg[R_RIP]++;
     }
     else if ((modrm & 0b10000000) == 0b10000000) {
         uint16_t disp16;
         fread(&disp16, 2, 1, binary);
         addr += disp16;
-        reg[R_IP]+=2;
+        reg[R_RIP]+=2;
     }
     // Exception to pattern in ModR/M table has to be addressed separately
     else if ((modrm | 0b00111111) == 0b00111111 && (modrm & 0b00000111) == 0b000000110) {
         uint16_t disp16;
         fread(&disp16, 2, 1, binary);
         addr = reg[disp16];
-        reg[R_IP] += 2;
+        reg[R_RIP] += 2;
     }
     return addr;
 }
 
-void ax_op(void(*op)(uint16_t*, uint16_t), int regsize, uint8_t modrm)
+void ax_op(void(*op)(uint64_t*, uint64_t), int regsize, uint8_t modrm)
 {
-    printf("Hiya\n");
     if ((modrm & 0b11000000) == 0b11000000) {
         // TODO: Check that 8 bit carries dont happen
         if (regsize == 8) (*op)(&reg[0], reg[modrm & 0b00111000] << 8 >> 8);
         else (*op)(&reg[0], reg[modrm & 0b00111000]);
     }
     else {
-        int addr = get_addr(modrm);
+        int addr = get_addr_16bit(modrm);
         if (regsize == 8) (*op)(&reg[0], memory[addr] << 8 >> 8);
         else (*op)(&reg[0], memory[addr]);
     }
     update_flags(reg[0]);
 }
 
-void std_op(void(*op)(uint16_t*, uint16_t), int variant)
+void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t), int variant)
 {
     if (variant == 5) {
-        uint16_t imm16;
-        fread(&imm16, 2, 1, binary);
-        (*op)(&reg[0], imm16);
-        reg[R_IP]+=2;
+        if (prefix == 0x66) {
+            uint16_t imm16;
+            fread(&imm16, 2, 1, binary);
+            (*op)(&reg[0], sign_extend(imm16, 16));
+            reg[R_RIP]+=2;
+        }
+        else {
+            uint32_t imm32;
+            fread(&imm32, 4, 1, binary);
+            (*op)(&reg[0], sign_extend(imm32, 32));
+            reg[R_RIP]+=4;
+        }
         update_flags(reg[0]);
     }
     else if (variant == 4) {
         uint8_t imm8;
         fread(&imm8, 1, 1, binary);
         (*op)(&reg[0], sign_extend(imm8, 8));
-        reg[R_IP]++;
+        reg[R_RIP]++;
         update_flags(reg[0]);
     }
     else if (variant < 4) {
         uint8_t modrm;
         fread(&modrm, 1, 1, binary);
-        reg[R_IP]++;
+        reg[R_RIP]++;
         if ((modrm & 0b11000000) == 0b11000000) {
             // TODO: Check that 8 bit carries dont happen
-            if (variant == 0) (*op)(&reg[modrm & 0b00000111], reg[modrm & 0b00111000] << 8 >> 8);
-            else if (variant == 1) (*op)(&reg[modrm & 0b00000111], reg[modrm & 0b00111000]);
-            else if (variant == 2) (*op)(&reg[modrm & 0b00111000], reg[modrm & 0b00000111] << 8 >> 8);
+            int op1, op2;
+            if ((prefix & 0b01001000) == 0b01001000) 
+            if (variant == 0) (*op)(&reg[op1], reg[modrm & 0b00111000] & 0xFF);
+            else if (variant == 1) (*op)(&reg[op1], reg[modrm & 0b00111000]);
+            else if (variant == 2) (*op)(&reg[modrm & 0b00111000], reg[modrm & 0b00000111] & 0xFF);
             else if (variant == 3) (*op)(&reg[modrm & 0b00111000], reg[modrm & 0b00000111]);
             if (variant == 0 || variant == 1) update_flags(reg[modrm & 0b00000111]);
             else update_flags(reg[modrm & 0b00111000]);
         }
         else {
-            int addr = get_addr(modrm);
-            if (variant == 0) (*op)(&memory[addr], reg[modrm & 0b00111000] << 8 >> 8);
+            int addr = get_addr_16bit(modrm);
+            if (variant == 0) (*op)(&memory[addr], reg[modrm & 0b00111000] & 0xFF);
             else if (variant == 1) (*op)(&memory[addr], reg[modrm & 0b00111000]); 
-            else if (variant == 2) (*op)(&reg[modrm & 0b00111000], memory[addr] << 8 >> 8);
+            else if (variant == 2) (*op)(&reg[modrm & 0b00111000], memory[addr] & 0xFF);
             else if (variant == 3) (*op)(&reg[modrm & 0b00111000], memory[addr]);
             if (variant == 0 || variant == 1) update_flags(reg[modrm & 0b00111000]);
             else update_flags(memory[addr]);
@@ -256,7 +272,7 @@ void std_op(void(*op)(uint16_t*, uint16_t), int variant)
 void jump(bool condition, int immsize, bool far)
 {
     if (!condition) {
-        reg[R_IP]+=immsize/8;
+        reg[R_RIP]+=immsize/8;
         fseek(binary, immsize/8, SEEK_CUR);
         return;
     }
@@ -265,30 +281,30 @@ void jump(bool condition, int immsize, bool far)
     if (immsize == 8) {
         int8_t imm8;
         fread(&imm8, 1, 1, binary);
-        reg[R_IP]++;
+        reg[R_RIP]++;
         fseek(binary, imm8, loc);
-        reg[R_IP] += imm8;
+        reg[R_RIP] += imm8;
     }
     else if (immsize == 16) {
         int16_t imm16;
         fread(&imm16, 2, 1, binary);
-        reg[R_IP]+=2;
+        reg[R_RIP]+=2;
         fseek(binary, imm16, loc);
-        reg[R_IP] += imm16;
+        reg[R_RIP] += imm16;
     }
     // TODO: Add register JMP instructions
 }
 
 void push(int reg_num)
 {
-    reg[R_SP] -= 1;
-    memory[reg[R_SP]] = reg[reg_num];
+    reg[R_RSP] -= 1;
+    memory[reg[R_RSP]] = reg[reg_num];
 }
 
 void pop(int reg_num)
 {
-    reg[reg_num] = memory[reg[R_SP]];
-    reg[R_SP] += 1;
+    reg[reg_num] = memory[reg[R_RSP]];
+    reg[R_RSP] += 1;
 }
 
 #include "read.c"
@@ -296,13 +312,13 @@ void pop(int reg_num)
 int run(char* filename)
 {
     // Initialize stack
-    reg[R_BP] = rand() % (UINT16_MAX + 1);
-    reg[R_SP] = reg[R_BP];
-    reg[R_CX] = 2;
+    reg[R_RBP] = rand() % (UINT16_MAX + 1);
+    reg[R_RSP] = reg[R_RBP];
+    reg[R_RCX] = 2;
     binary = fopen(filename, "r");
     //uint8_t signature; // Avoid file signature shifting everything over by one.
     //fread(&signature, 1, 1, binary);
-    for (reg[R_IP] = 0x0000; reg[R_IP] < fsize(filename);) {
+    for (reg[R_RIP] = 0x0000; reg[R_RIP] < fsize(filename);) {
         step(true, false);
         exit(1);
     }
@@ -336,7 +352,7 @@ int main(int argc, char** argv)
             }
             else if (strcmp(msg, "registers") == 0) {
                 printf("       Hex    │ base10 │ Binary\n");
-                for (int i = 0; i < R_COUNT; i++) printf("%5s: 0x%04x │ %05d  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg_name[i], reg[i], reg[i], PRINTF_BYTE_TO_BINARY_INT16(reg[i]));
+                for (int i = 0; i < R_COUNT; i++) printf("%5s: 0x%04llx │ %05llu  │ "PRINTF_BINARY_PATTERN_INT16"\n", reg_name[i], reg[i], reg[i], PRINTF_BYTE_TO_BINARY_INT16(reg[i]));
             }
             else if (strcmp(msg, "flags") == 0) {
                 printf("Full FLAG register: "PRINTF_BINARY_PATTERN_INT16"\n", PRINTF_BYTE_TO_BINARY_INT16(reg[R_FLAGS]));
@@ -345,28 +361,28 @@ int main(int argc, char** argv)
                 printf("SF: %d\n", (reg[R_FLAGS] & FL_SF) == FL_SF);
             }
             else if (strcmp(msg, "stack") == 0) {
-                for (int i = reg[R_SP]; i < reg[R_BP]; i+=1) {
+                for (int i = reg[R_RSP]; i < reg[R_RBP]; i+=1) {
                     printf("        --------\n");
-                    printf("0x%04x:  0x%04x ", i, memory[i]);
+                    printf("0x%04x:  0x%04llx ", i, memory[i]);
                     for (int j = 0; j < R_COUNT; j++) if (reg[j] == i) printf(" <- %s", reg_name[j]);
                     printf("\n");
                 }
                 printf("        --------\n");
-                printf("0x%04x:  0x%04x ", reg[R_BP], memory[reg[R_BP]]);
+                printf("0x%04llx:  0x%04llx ", reg[R_RBP], memory[reg[R_RBP]]);
                 printf(" <- BP");
                 printf("\n        --------\n");
             }
             else if (strcmp(msg, "step") == 0) {
                 if (!init) {
-                    reg[R_BP] = rand() % (UINT16_MAX + 1);
-                    reg[R_SP] = reg[R_BP];
+                    reg[R_RBP] = rand() % (UINT16_MAX + 1);
+                    reg[R_RSP] = reg[R_RBP];
                     binary = fopen(argv[1], "r");
-                    reg[R_IP] = 0;
+                    reg[R_RIP] = 0;
                     printf("Initialized program.\n");
                     init = true;
                 }
                 else {
-                    if (reg[R_IP] < fsize(argv[1])) step(true, true);
+                    if (reg[R_RIP] < fsize(argv[1])) step(true, true);
                     else {
                         printf("Program end.\n");
                         init = false;
