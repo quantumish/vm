@@ -94,33 +94,7 @@ uint64_t reg[R_COUNT];
 
 FILE* binary;
 
-// Simple file size detector via https://stackoverflow.com/questions/8236/how-do-you-determine-the-size-of-a-file-in-c
-off_t fsize(const char *filename) {
-    struct stat st; 
-    if (stat(filename, &st) == 0)
-        return st.st_size;
-    return -1; 
-}
-
-// Update flags based on operation result
-void update_flags(uint64_t r)
-{
-    if (r % 2 == 0) reg[R_FLAGS] |= FL_PF;
-    else reg[R_FLAGS] &= ~FL_PF;
-    if (r == 0) reg[R_FLAGS] |= FL_ZF;
-    else reg[R_FLAGS] &= ~FL_ZF;
-    if (r < 0) reg[R_FLAGS] |= FL_SF;
-    else reg[R_FLAGS] &= ~FL_SF;
-}
-
-// Extend an n-bit number to a 64 bit number
-uint64_t sign_extend(uint64_t x, int bit_count)
-{
-    if ((x >> (bit_count - 1)) & 1) {
-        x |= ((int)pow(2, 64) << bit_count);
-    }
-    return x;
-}
+#include "utility.c"
 
 void add(uint64_t* a, uint64_t b, size_t portion)
 {
@@ -210,49 +184,11 @@ int get_addr_16bit(uint8_t modrm)
     else if ((modrm & 0b00000111) == 0b000000010) addr = (reg[R_RBP] + reg[R_RSI]) & 0xFFFF;
     else if ((modrm & 0b00000111) == 0b000000001) addr = (reg[R_RBX] + reg[R_RDI]) & 0xFFFF;
     else if ((modrm & 0b00000111) == 0b000000000) addr = (reg[R_RBX] + reg[R_RSI]) & 0xFFFF;
-    if ((modrm & 0b01000000) == 0b01000000) {
-        uint8_t disp8;
-        fread(&disp8, 1, 1, binary);
-        addr += disp8;
-        reg[R_RIP]++;
-    }
-    else if ((modrm & 0b10000000) == 0b10000000) {
-        uint16_t disp16;
-        fread(&disp16, 2, 1, binary);
-        addr += disp16;
-        reg[R_RIP]+=2;
-    }
+    if ((modrm & 0b01000000) == 0b01000000) addr += read_immediate(8);
+    else if ((modrm & 0b10000000) == 0b10000000) addr += read_immediate(16);
     // Exception to pattern in ModR/M table has to be addressed separately
-    else if ((modrm | 0b00111111) == 0b00111111 && (modrm & 0b00000111) == 0b000000110) {
-        uint16_t disp16;
-        fread(&disp16, 2, 1, binary);
-        addr = reg[disp16];
-        reg[R_RIP] += 2;
-    }
+    else if ((modrm | 0b00111111) == 0b00111111 && (modrm & 0b00000111) == 0b000000110) addr = reg[read_immediate(16)];
     return addr;
-}
-
-uint64_t read_immediate(int bits)
-{
-    assert(bits == 8 || bits == 16 || bits == 32);
-    if (bits == 8) {
-        uint8_t imm8;
-        fread(&imm8, bits/8, 1, binary);
-        reg[R_RIP]+=bits/8;
-        return sign_extend(imm8, 8);
-    }
-    else if (bits == 16) {
-        uint16_t imm16;
-        fread(&imm16, bits/8, 1, binary);
-        reg[R_RIP]+=bits/8;
-        return sign_extend(imm16, 16);
-    }
-    else if (bits == 32) {
-        uint32_t imm32;
-        fread(&imm32, bits/8, 1, binary);
-        reg[R_RIP]+=bits/8;
-        return sign_extend(imm32, 32);
-    }
 }
 
 int get_addr(uint8_t prefix, uint8_t modrm)
@@ -295,25 +231,12 @@ int get_addr(uint8_t prefix, uint8_t modrm)
 void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
 {
     if (variant == 5) {
-        if (prefix == 0x66) {
-            uint16_t imm16;
-            fread(&imm16, 2, 1, binary);
-            (*op)(&reg[0], sign_extend(imm16, 16), 16);
-            reg[R_RIP]+=2;
-        }
-        else {
-            uint32_t imm32;
-            fread(&imm32, 4, 1, binary);
-            (*op)(&reg[0], sign_extend(imm32, 32), 32);
-            reg[R_RIP]+=4;
-        }
+        if (prefix == 0x66) (*op)(&reg[0], read_immediate(16), 16);
+        else (*op)(&reg[0], read_immediate(32), 32);
         update_flags(reg[0]);
     }
     else if (variant == 4) {
-        uint8_t imm8;
-        fread(&imm8, 1, 1, binary);
-        (*op)(&reg[0], sign_extend(imm8, 8), 8);
-        reg[R_RIP]++;
+        (*op)(&reg[0], read_immediate(8), 8);
         update_flags(reg[0]);
     }
     else if (variant < 4) {
@@ -334,7 +257,6 @@ void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
             else (*op)(&reg[op1], reg[op2], portion);
         }
         else {
-            // TODO: Actually implement 64 bit addressing
             int addr;
             if (prefix == 0x66) addr = get_addr_16bit(modrm);
             else addr = get_addr(prefix, modrm);
@@ -342,7 +264,6 @@ void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
             else if (variant == 1) (*op)(&memory[addr], reg[modrm & 0b00111000], portion); 
             else if (variant == 2) (*op)(&reg[modrm & 0b00111000], memory[addr] & 0xFF, portion);
             else if (variant == 3) (*op)(&reg[modrm & 0b00111000], memory[addr], portion);
-
         }
     }
 }
