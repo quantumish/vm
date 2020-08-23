@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <math.h>
 #include <sys/types.h>
+#include <assert.h>
 
 // Hacky %b for printf from stackoverflow
 //https://stackoverflow.com/questions/111928/is-there-a-printf-converter-to-print-in-binary-format
@@ -101,6 +102,7 @@ off_t fsize(const char *filename) {
     return -1; 
 }
 
+// Update flags based on operation result
 void update_flags(uint64_t r)
 {
     if (r % 2 == 0) reg[R_FLAGS] |= FL_PF;
@@ -111,6 +113,7 @@ void update_flags(uint64_t r)
     else reg[R_FLAGS] &= ~FL_SF;
 }
 
+// Extend an n-bit number to a 64 bit number
 uint64_t sign_extend(uint64_t x, int bit_count)
 {
     if ((x >> (bit_count - 1)) & 1) {
@@ -132,7 +135,7 @@ void add(uint64_t* a, uint64_t b, size_t portion)
 void sub(uint64_t* a, uint64_t b, size_t portion)
 {
     uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
-    a_portion += b & (uint64_t)pow(2, portion)-1;;
+    a_portion += b & (uint64_t)pow(2, portion)-1;
     update_flags(a_portion);
     if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
     else *a &= 0;
@@ -229,19 +232,35 @@ int get_addr_16bit(uint8_t modrm)
     return addr;
 }
 
-void ax_op(void(*op)(uint64_t*, uint64_t, size_t), int regsize, uint8_t modrm)
+int get_addr(uint8_t modrm)
 {
-    /* if ((modrm & 0b11000000) == 0b11000000) { */
-    /*     // TODO: Check that 8 bit carries dont happen */
-    /*     if (regsize == 8) (*op)(&reg[0], reg[modrm & 0b00111000] << 8 >> 8); */
-    /*     else (*op)(&reg[0], reg[modrm & 0b00111000]); */
-    /* } */
-    /* else { */
-    /*     int addr = get_addr_16bit(modrm); */
-    /*     if (regsize == 8) (*op)(&reg[0], memory[addr] << 8 >> 8); */
-    /*     else (*op)(&reg[0], memory[addr]); */
-    /* } */
-    /* update_flags(reg[0]); */
+    int addr;
+    uint8_t rm = modrm & 0b00000111;
+    uint8_t mod = modrm & 0b11000000;
+    if ((prefix & 0b01000001) != 0b01000000 &&) rm = (rm << 1) + 1;
+    // See table at wiki.osdev.org/X86-64_Instruction_Encoding to understand why this madness exists
+    if (rm < 4 || (rm > 9 && rm < 12) || rm > 13) addr = reg[rm];
+    else if (rm == 8 || rm == 12) {
+        uint8_t sib;
+        fread(&sib, 1, 1, binary);
+        reg[R_RIP]++;
+        uint8_t scale = sib & 0b11000000;
+        uint8_t index = sib & 0b00111000;
+        uint8_t base = sib & 0b00000111;
+        if ((prefix & 0b01000010) != 0b01000000 &&) index = (index << 1) + 1;
+        if ((prefix & 0b01000001) != 0b01000000 &&) base = (base << 1) + 1;
+        if (mod == 0) {
+            if (index == 2) {
+                if (base == 5 || base == 13);
+                else
+            }
+        }
+        else addr = reg[base] + (reg[index] * scale);
+            
+        if (index < 4) addr = reg[base] + (reg[index] * scale);
+    }
+    else if ((rm == 13 || rm == 9) && mod = 0) addr = reg[rm]
+    
 }
 
 void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
@@ -342,12 +361,10 @@ int run(char* filename, long offset)
     // Initialize stack
     reg[R_RBP] = rand() % (UINT16_MAX + 1);
     reg[R_RSP] = reg[R_RBP];
-    binary = fopen(filename, "r ");
-    //uint8_t signature; // Avoid file signature shifting everything over by one.
-    //fread(&signature, 1, 1, binary);
+    binary = fopen(filename, "r");
     fseek(binary, offset, SEEK_SET);
     for (reg[R_RIP] = offset; reg[R_RIP] < fsize(filename);) {
-        if (step(true, false) == 1) return 1;
+        if (step(true, true) == 1) return 1;
     }
     return 0;
 }
