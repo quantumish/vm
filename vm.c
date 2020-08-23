@@ -232,12 +232,35 @@ int get_addr_16bit(uint8_t modrm)
     return addr;
 }
 
-int get_addr(uint8_t modrm)
+uint64_t read_immediate(int bits)
+{
+    assert(bits == 8 || bits == 16 || bits == 32);
+    if (bits == 8) {
+        uint8_t imm8;
+        fread(&imm8, bits/8, 1, binary);
+        reg[R_RIP]+=bits/8;
+        return sign_extend(imm8, 8);
+    }
+    else if (bits == 16) {
+        uint16_t imm16;
+        fread(&imm16, bits/8, 1, binary);
+        reg[R_RIP]+=bits/8;
+        return sign_extend(imm16, 16);
+    }
+    else if (bits == 32) {
+        uint32_t imm32;
+        fread(&imm32, bits/8, 1, binary);
+        reg[R_RIP]+=bits/8;
+        return sign_extend(imm32, 32);
+    }
+}
+
+int get_addr(uint8_t prefix, uint8_t modrm)
 {
     int addr;
     uint8_t rm = modrm & 0b00000111;
     uint8_t mod = modrm & 0b11000000;
-    if ((prefix & 0b01000001) != 0b01000000 &&) rm = (rm << 1) + 1;
+    if ((prefix & 0b01000001) != 0b01000000) rm = (rm << 1) + 1;
     // See table at wiki.osdev.org/X86-64_Instruction_Encoding to understand why this madness exists
     if (rm < 4 || (rm > 9 && rm < 12) || rm > 13) addr = reg[rm];
     else if (rm == 8 || rm == 12) {
@@ -247,20 +270,26 @@ int get_addr(uint8_t modrm)
         uint8_t scale = sib & 0b11000000;
         uint8_t index = sib & 0b00111000;
         uint8_t base = sib & 0b00000111;
-        if ((prefix & 0b01000010) != 0b01000000 &&) index = (index << 1) + 1;
-        if ((prefix & 0b01000001) != 0b01000000 &&) base = (base << 1) + 1;
+        if ((prefix & 0b01000010) != 0b01000000) index = (index << 1) + 1;
+        if ((prefix & 0b01000001) != 0b01000000) base = (base << 1) + 1;
         if (mod == 0) {
             if (index == 2) {
-                if (base == 5 || base == 13);
-                else
+                if (base == 5 || base == 13) addr = read_immediate(32);
+                else addr = reg[base];
+            }
+            else {
+                if (base == 5 || base == 13) addr = (reg[index] * scale) + read_immediate(32);
+                else addr = reg[base] + (reg[index] * scale);
             }
         }
         else addr = reg[base] + (reg[index] * scale);
-            
-        if (index < 4) addr = reg[base] + (reg[index] * scale);
     }
-    else if ((rm == 13 || rm == 9) && mod = 0) addr = reg[rm]
+    else if ((rm == 13 || rm == 9) && mod == 0) addr = reg[rm];
+    else addr = reg[R_RIP] + read_immediate(32);
     
+    if (mod == 1) addr += read_immediate(8);
+    else if (mod == 2) addr += read_immediate(32);
+    return addr;
 }
 
 void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
@@ -306,7 +335,9 @@ void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
         }
         else {
             // TODO: Actually implement 64 bit addressing
-            int addr = get_addr_16bit(modrm);
+            int addr;
+            if (prefix == 0x66) addr = get_addr_16bit(modrm);
+            else addr = get_addr(prefix, modrm);
             if (variant == 0) (*op)(&memory[addr], reg[modrm & 0b00111000] & 0xFF, portion);
             else if (variant == 1) (*op)(&memory[addr], reg[modrm & 0b00111000], portion); 
             else if (variant == 2) (*op)(&reg[modrm & 0b00111000], memory[addr] & 0xFF, portion);
@@ -325,20 +356,11 @@ void jump(bool condition, int immsize, bool far)
     }
     int loc = SEEK_CUR;
     if (far) loc = SEEK_SET;
-    if (immsize == 8) {
-        int8_t imm8;
-        fread(&imm8, 1, 1, binary);
-        reg[R_RIP]++;
-        fseek(binary, imm8, loc);
-        reg[R_RIP] += imm8;
-    }
-    else if (immsize == 16) {
-        int16_t imm16;
-        fread(&imm16, 2, 1, binary);
-        reg[R_RIP]+=2;
-        fseek(binary, imm16, loc);
-        reg[R_RIP] += imm16;
-    }
+    uint64_t immediate;
+    if (immsize == 8) immediate = read_immediate(8);
+    else if (immsize == 16) immediate = read_immediate(16);
+    fseek(binary, immediate, loc);
+    reg[R_RIP] += immediate;
     // TODO: Add register JMP instructions
 }
 

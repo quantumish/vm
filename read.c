@@ -91,14 +91,14 @@ int step(bool forgiving, bool verbose) {
         MAP_OPCODE(0xE9, jump(true, 16, false));
         MAP_OPCODE(0xEB, jump(true, 8, false));
         MAP_OPCODE(0xEA, jump(true, 16, true));
-    MULTIMAP_BEGIN(0xF6)
-        MAP_EXTENSION(4, ax_op(mul, 8, modrm));
-        MAP_EXTENSION(6, ax_op(udiv, 8, modrm));
-    MULTIMAP_END(0xF6)
-    MULTIMAP_BEGIN(0xF7)
-        MAP_EXTENSION(4, ax_op(mul, 16, modrm));
-        MAP_EXTENSION(6, ax_op(udiv, 16, modrm));
-    MULTIMAP_END(0xF7)
+    /* MULTIMAP_BEGIN(0xF6) */
+    /*     MAP_EXTENSION(4, ax_op(mul, 8, modrm)); */
+    /*     MAP_EXTENSION(6, ax_op(udiv, 8, modrm)); */
+    /* MULTIMAP_END(0xF6) */
+    /* MULTIMAP_BEGIN(0xF7) */
+    /*     MAP_EXTENSION(4, ax_op(mul, 16, modrm)); */
+    /*     MAP_EXTENSION(6, ax_op(udiv, 16, modrm)); */
+    /* MULTIMAP_END(0xF7) */
     default:
         if (forgiving) printf("Bad opcode 0x%02x at 0x%02llx! Skipping...\n", op, reg[R_RIP]-1);
         else exit(1);
