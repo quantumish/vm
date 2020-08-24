@@ -87,6 +87,30 @@ int step(bool forgiving, bool verbose) {
         MAP_OPCODE(0x79, jump((reg[R_FLAGS] | ~FL_SF) == ~FL_SF, 8, false));
         MAP_OPCODE(0x7A, jump((reg[R_FLAGS] & FL_PF) == FL_PF, 8, false));
         MAP_OPCODE(0x7B, jump((reg[R_FLAGS] | ~FL_PF) == ~FL_PF, 8, false));
+        MULTIMAP_BEGIN(0x80)
+            MAP_EXTENSION(0, std_op(prefix, add, 6));
+            MAP_EXTENSION(1, std_op(prefix, or, 6)); 
+            MAP_EXTENSION(4, std_op(prefix, and, 6)); 
+            MAP_EXTENSION(5, std_op(prefix, sub, 6)); 
+            MAP_EXTENSION(6, std_op(prefix, xor, 6)); 
+            MAP_EXTENSION(7, std_op(prefix, cmp, 6)); 
+        MULTIMAP_END(0x80)
+        MULTIMAP_BEGIN(0x81)
+            MAP_EXTENSION(0, std_op(prefix, add, 7));
+            MAP_EXTENSION(1, std_op(prefix, or, 7)); 
+            MAP_EXTENSION(4, std_op(prefix, and, 7)); 
+            MAP_EXTENSION(5, std_op(prefix, sub, 7)); 
+            MAP_EXTENSION(6, std_op(prefix, xor, 7)); 
+            MAP_EXTENSION(7, std_op(prefix, cmp, 7)); 
+        MULTIMAP_END(0x81)
+        MULTIMAP_BEGIN(0x83)
+            MAP_EXTENSION(0, std_op(prefix, add, 8));
+            MAP_EXTENSION(1, std_op(prefix, or, 8)); 
+            MAP_EXTENSION(4, std_op(prefix, and, 8)); 
+            MAP_EXTENSION(5, std_op(prefix, sub, 8)); 
+            MAP_EXTENSION(6, std_op(prefix, xor, 8)); 
+            MAP_EXTENSION(7, std_op(prefix, cmp, 8)); 
+        MULTIMAP_END(0x83)
         MAP_OPCODE(0xC3, return 1);
         MAP_OPCODE(0xE9, jump(true, 16, false));
         MAP_OPCODE(0xEB, jump(true, 8, false));

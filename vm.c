@@ -239,14 +239,14 @@ void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
         (*op)(&reg[0], read_immediate(8), 8);
         update_flags(reg[0]);
     }
-    else if (variant < 4) {
+    else if (variant < 4 || variant > 5) {
         uint8_t modrm;
         fread(&modrm, 1, 1, binary);
         reg[R_RIP]++;
         size_t portion;
         if ((prefix & 0b01001000) == prefix) portion = 64;
         else if (prefix == 0x66) portion = 16;
-        else if (variant == 0 || variant == 2) portion = 8;
+        else if (variant == 0 || variant == 2 || variant == 6) portion = 8;
         else portion = 32;
         if ((modrm & 0b11000000) == 0b11000000) {
             // TODO: Check that 8 bit carries dont happen
@@ -254,16 +254,26 @@ void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
             if ((prefix & 0b01000100) != 0b01000000) op1 = (op1 << 1) + 1;
             if ((prefix & 0b01000100) != 0b01000000) op2 = (op2 << 1) + 1;
             if (variant < 2) (*op)(&reg[op2], reg[op1], portion);
-            else (*op)(&reg[op1], reg[op2], portion);
+            else if (variant < 4) (*op)(&reg[op1], reg[op2], portion);
+            else if (variant == 6 || variant == 8) (*op)(&reg[op2], read_immediate(8), portion);
+            else if (variant == 7) {
+                if (prefix == 0x66) (*op)(&reg[op2], read_immediate(16), portion);
+                else (*op)(&reg[op2], read_immediate(32), portion);
+            }
         }
         else {
             int addr;
             if (prefix == 0x66) addr = get_addr_16bit(modrm);
             else addr = get_addr(prefix, modrm);
-            if (variant == 0) (*op)(&memory[addr], reg[modrm & 0b00111000] & 0xFF, portion);
+            if (variant == 0) (*op)(&memory[addr], reg[modrm & 0b00111000], portion);
             else if (variant == 1) (*op)(&memory[addr], reg[modrm & 0b00111000], portion); 
-            else if (variant == 2) (*op)(&reg[modrm & 0b00111000], memory[addr] & 0xFF, portion);
+            else if (variant == 2) (*op)(&reg[modrm & 0b00111000], memory[addr], portion);
             else if (variant == 3) (*op)(&reg[modrm & 0b00111000], memory[addr], portion);
+            else if (variant == 6 || variant == 8) (*op)(&memory[addr], read_immediate(8), portion);
+            else if (variant == 7) {
+                if (prefix == 0x66) (*op)(&memory[addr], read_immediate(16), portion);
+                else (*op)(&memory[addr], read_immediate(32), portion);
+            }
         }
     }
 }
