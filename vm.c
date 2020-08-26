@@ -173,6 +173,15 @@ void cmp(uint64_t* a, uint64_t b, size_t portion)
     update_flags(a_portion);
 }
 
+void mov(uint64_t* a, uint64_t b, size_t portion)
+{
+    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
+    a_portion = b & (uint64_t)pow(2, portion)-1;
+    if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
+    else *a &= 0;
+    *a |= a_portion;
+}
+
 // ONLY WORKS FOR 16 BIT
 int get_addr_16bit(uint8_t modrm)
 {

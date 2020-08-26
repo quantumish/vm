@@ -111,6 +111,10 @@ int step(bool forgiving, bool verbose) {
             MAP_EXTENSION(6, std_op(prefix, xor, 8)); 
             MAP_EXTENSION(7, std_op(prefix, cmp, 8)); 
         MULTIMAP_END(0x83)
+        MAP_OPCODE(0x88, std_op(prefix, mov, 0));
+        MAP_OPCODE(0x89, std_op(prefix, mov, 1));
+        MAP_OPCODE(0x8A, std_op(prefix, mov, 2));
+        MAP_OPCODE(0x8B, std_op(prefix, mov, 3));
         MAP_OPCODE(0xC3, return 1);
         MAP_OPCODE(0xE9, jump(true, 16, false));
         MAP_OPCODE(0xEB, jump(true, 8, false));
