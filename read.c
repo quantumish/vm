@@ -116,6 +116,8 @@ int step(bool forgiving, bool verbose) {
         MAP_OPCODE(0x8A, std_op(prefix, mov, 2));
         MAP_OPCODE(0x8B, std_op(prefix, mov, 3));
         MAP_OPCODE(0xC3, return 1);
+        MAP_OPCODE(0xC6, mem_imm(prefix, mov, 0));
+        MAP_OPCODE(0xC7, mem_imm(prefix, mov, 1));
         MAP_OPCODE(0xE9, jump(true, 16, false));
         MAP_OPCODE(0xEB, jump(true, 8, false));
         MAP_OPCODE(0xEA, jump(true, 16, true));

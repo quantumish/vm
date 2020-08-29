@@ -231,7 +231,6 @@ int get_addr(uint8_t prefix, uint8_t modrm)
     }
     else if ((rm == 13 || rm == 9) && mod == 0) addr = reg[rm];
     else addr = reg[R_RIP] + read_immediate(32);
-    
     if (mod == 1) addr += read_immediate(8);
     else if (mod == 2) addr += read_immediate(32);
     return addr;
@@ -284,6 +283,31 @@ void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
                 else (*op)(&memory[addr], read_immediate(32), portion);
             }
         }
+    }
+}
+
+void mem_imm(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
+{
+    uint8_t modrm;
+    fread(&modrm, 1, 1, binary);
+    reg[R_RIP]++;
+    size_t portion;
+    if ((prefix & 0b01001000) == prefix) portion = 64;
+    else if (prefix == 0x66) portion = 16;
+    else if (variant == 0) portion = 8;
+    else portion = 32;
+    if ((modrm & 0b11000000) == 0b11000000) {
+        int op2 = modrm & 0b00000111;
+        if ((prefix & 0b01000100) != 0b01000000) op2 = (op2 << 1) + 1;
+        if (portion == 64 || 32) (*op)(&reg[op2], read_immediate(32), portion);
+        else (*op)(&reg[op2], read_immediate(portion), portion);
+    }
+    else {
+        int addr;
+        if (prefix == 0x66) addr = get_addr_16bit(modrm);
+        else addr = get_addr(prefix, modrm);
+        if (portion == 64 || 32) (*op)(&memory[addr], read_immediate(32), portion);
+        else (*op)(&memory[addr], read_immediate(portion), portion);
     }
 }
 
@@ -367,20 +391,18 @@ int main(int argc, char** argv)
                 printf("SF: %d\n", (reg[R_FLAGS] & FL_SF) == FL_SF);
             }
             else if (strcmp(msg, "stack") == 0) {
-                for (int i = reg[R_RSP]; i < reg[R_RBP]; i+=1) {
+                printf("%x\n", reg[R_RBP]);
+                for (int i = reg[R_RSP]+10; i > reg[R_RBP]-10; i-=1) {
                     printf("        --------\n");
                     printf("0x%04x:  0x%04llx ", i, memory[i]);
                     for (int j = 0; j < R_COUNT; j++) if (reg[j] == i) printf(" <- %s", reg_name[j]);
                     printf("\n");
                 }
-                printf("        --------\n");
-                printf("0x%016llx:  0x%016llx ", reg[R_RBP], memory[reg[R_RBP]]);
-                printf(" <- BP");
-                printf("\n        --------\n");
-            }
+             }
             else if (strcmp(msg, "step") == 0) {
                 if (!init) {
                     reg[R_RBP] = rand() % (UINT16_MAX + 1);
+                    printf("%x\n", reg[R_RBP]);
                     reg[R_RSP] = reg[R_RBP];
                     binary = fopen(argv[1], "r");
                     long offset = strtol(argv[2], NULL, 10);
