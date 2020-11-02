@@ -7,6 +7,7 @@
 uint8_t prefix = NULL;
 int step(bool forgiving, bool verbose) {
     uint8_t op;
+    uint8_t op2;
     uint8_t modrm;
     fread(&op, 1, 1, binary);
     reg[R_RIP]++;
@@ -115,12 +116,20 @@ int step(bool forgiving, bool verbose) {
         MAP_OPCODE(0x89, std_op(prefix, mov, 1));
         MAP_OPCODE(0x8A, std_op(prefix, mov, 2));
         MAP_OPCODE(0x8B, std_op(prefix, mov, 3));
-        MAP_OPCODE(0xC3, return 1);
+        //MAP_OPCODE(0x99, cwd());
+        MAP_OPCODE(0xC3, exit(0));
         MAP_OPCODE(0xC6, mem_imm(prefix, mov, 0));
         MAP_OPCODE(0xC7, mem_imm(prefix, mov, 1));
         MAP_OPCODE(0xE9, jump(true, 16, false));
         MAP_OPCODE(0xEB, jump(true, 8, false));
         MAP_OPCODE(0xEA, jump(true, 16, true));
+        MAP_OPCODE(0xF0, /* Nothing, as no multithreading exists at the moment. */);
+        MULTIMAP_BEGIN(0xF6)
+            MAP_EXTENSION(0, std_op(prefix, test, 4));
+        MULTIMAP_END(0xF6)
+        MULTIMAP_BEGIN(0xF7)
+            MAP_EXTENSION(0, std_op(prefix, test, 5));
+        MULTIMAP_END(0xF7)
     /* MULTIMAP_BEGIN(0xF6) */
     /*     MAP_EXTENSION(4, ax_op(mul, 8, modrm)); */
     /*     MAP_EXTENSION(6, ax_op(udiv, 8, modrm)); */
@@ -129,6 +138,23 @@ int step(bool forgiving, bool verbose) {
     /*     MAP_EXTENSION(4, ax_op(mul, 16, modrm)); */
     /*     MAP_EXTENSION(6, ax_op(udiv, 16, modrm)); */
     /* MULTIMAP_END(0xF7) */
+            MAP_OPCODE(0xF8, reg[R_FLAGS] &= ~FL_CF);
+    case 0x0F:
+        fread(&op2, 1, 1, binary);
+        reg[R_RIP]++;
+        switch(op2) {
+            MAP_OPCODE(0x84, jump((reg[R_FLAGS] & FL_ZF) == FL_ZF, 16, false));
+            MAP_OPCODE(0x85, jump((reg[R_FLAGS] | ~FL_ZF) == ~FL_ZF, 16, false));
+            MAP_OPCODE(0x88, jump((reg[R_FLAGS] & FL_SF) == FL_SF, 16, false));
+            MAP_OPCODE(0x89, jump((reg[R_FLAGS] | ~FL_SF) == ~FL_SF, 16, false));
+            MAP_OPCODE(0x8A, jump((reg[R_FLAGS] & FL_PF) == FL_PF, 16, false));
+            MAP_OPCODE(0x8B, jump((reg[R_FLAGS] | ~FL_PF) == ~FL_PF, 16, false));
+        default:
+            if (forgiving) printf("Bad two-byte opcode 0x%02x%02x at 0x%02llx! Skipping...\n", op, op2, reg[R_RIP]-1);
+            else exit(1);
+            break;
+        }
+        break;
     default:
         if (forgiving) printf("Bad opcode 0x%02x at 0x%02llx! Skipping...\n", op, reg[R_RIP]-1);
         else exit(1);

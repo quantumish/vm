@@ -74,7 +74,7 @@ const char* reg_name[R_COUNT] = {"RAX", "RCX", "RDX", "RBX", "RSP", "RBP", "RSI"
 // Decimal is simpler to write than 16-bit binary...
 enum
 {
-    FL_CF = 0,
+    FL_CF = 1,
     FL_PF = 4,
     FL_AF = 16,
     FL_ZF = 64,
@@ -172,6 +172,14 @@ void cmp(uint64_t* a, uint64_t b, size_t portion)
     a_portion -= b & (uint64_t)pow(2, portion)-1;
     update_flags(a_portion);
 }
+
+void test(uint64_t* a, uint64_t b, size_t portion)
+{
+    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
+    a_portion &= b & (uint64_t)pow(2, portion)-1;
+    update_flags(a_portion);
+}
+
 
 void mov(uint64_t* a, uint64_t b, size_t portion)
 {
