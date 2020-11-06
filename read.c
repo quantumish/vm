@@ -149,6 +149,8 @@ int step(bool forgiving, bool verbose) {
             MAP_OPCODE(0x89, jump((reg[R_FLAGS] | ~FL_SF) == ~FL_SF, 16, false));
             MAP_OPCODE(0x8A, jump((reg[R_FLAGS] & FL_PF) == FL_PF, 16, false));
             MAP_OPCODE(0x8B, jump((reg[R_FLAGS] | ~FL_PF) == ~FL_PF, 16, false));
+            MAP_OPCODE(0x8D, jump((reg[R_FLAGS] & FL_SF) == (reg[R_FLAGS] & FL_OF), 16, false));
+            MAP_OPCODE(0xAF, std_op(prefix, imul, 3));
         default:
             if (forgiving) printf("Bad two-byte opcode 0x%02x%02x at 0x%02llx! Skipping...\n", op, op2, reg[R_RIP]-1);
             else exit(1);

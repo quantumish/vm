@@ -180,10 +180,20 @@ void test(uint64_t* a, uint64_t b, size_t portion)
     update_flags(a_portion);
 }
 
+void imul(uint64_t* ui_a, uint64_t ui_b, size_t portion)
+{
+    int64_t* a = (int64_t*)ui_a;
+    int64_t b = (int64_t)ui_b;
+    uint64_t a_portion = *a & (int64_t)pow(2, portion)-1;
+    a_portion &= b & (int64_t)pow(2, portion)-1;
+    update_flags(a_portion);
+    if (portion != 64) *ui_a = (uint64_t) *a & ((int64_t)pow(2, portion)-1) << portion;
+    else *ui_a &= 0;
+    *ui_a |= (uint64_t)a_portion;
+}
 
 void mov(uint64_t* a, uint64_t b, size_t portion)
 {
-    printf("%x %x\n", *a, b);
     uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
     a_portion = b & (uint64_t)pow(2, portion)-1;
     if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
@@ -268,11 +278,8 @@ void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
         if ((modrm & 0b11000000) == 0b11000000) {
             // TODO: Check that 8 bit carries dont happen
             int op1 = (modrm & 0b00111000) >> 3, op2 = modrm & 0b00000111;
-            printf("%d %d\n", op1, op2);
             if ((prefix & 0b01000100) != 0b01000000) op1 = (op1 << 1) + 1;
             if ((prefix & 0b01000100) != 0b01000000) op2 = (op2 << 1) + 1;
-            printf("%d %d\n", op1, op2);
-            printf("%x %x\n", reg[op1], reg[op2]);
             if (variant < 2) (*op)(&reg[op2], reg[op1], portion);
             else if (variant < 4) (*op)(&reg[op1], reg[op2], portion);
             else if (variant == 6 || variant == 8) (*op)(&reg[op2], read_immediate(8), portion);
@@ -354,6 +361,10 @@ void pop(int reg_num)
     reg[reg_num] = memory[reg[R_RSP]];
     reg[R_RSP] += 1;
 }
+
+void cldt()
+{
+}    
 
 #include "read.c"
 
