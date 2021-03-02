@@ -96,75 +96,23 @@ FILE* binary;
 
 #include "utility.c"
 
-void add(uint64_t* a, uint64_t b, size_t portion)
-{
-    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
-    a_portion += (b & (uint64_t)pow(2, portion)-1);
-    update_flags(a_portion);
-    if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
-    else *a &= 0;
-    *a |= a_portion;
+#define STDOP_C_BUILTIN(name, op) void name(uint64_t* a, uint64_t b, size_t portion) \
+{ \ 
+uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1; \ 
+a_portion = a_portion op (b & (uint64_t)pow(2, portion)-1); \ 
+update_flags(a_portion); \ 
+if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion; \
+else *a &= 0; \ 
+*a |= a_portion; \ 
 }
 
-void sub(uint64_t* a, uint64_t b, size_t portion)
-{
-    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
-    a_portion += b & (uint64_t)pow(2, portion)-1;
-    update_flags(a_portion);
-    if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
-    else *a &= 0;
-    *a |= a_portion;
-}
-
-void mul(uint64_t* a, uint64_t b, size_t portion)
-{
-    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
-    a_portion *= b & (uint64_t)pow(2, portion)-1;
-    update_flags(a_portion);
-    if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
-    else *a &= 0;
-    *a |= a_portion;
-}
-
-void udiv(uint64_t* a, uint64_t b, size_t portion)
-{
-    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
-    a_portion /= b & (uint64_t)pow(2, portion)-1;
-    update_flags(a_portion);
-    if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
-    else *a &= 0;
-    *a |= a_portion;
-}
-
-void and(uint64_t* a, uint64_t b, size_t portion)
-{
-    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
-    a_portion &= b & (uint64_t)pow(2, portion)-1;
-    update_flags(a_portion);
-    if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
-    else *a &= 0;
-    *a |= a_portion;
-} 
- 
-void or(uint64_t* a, uint64_t b, size_t portion)
-{
-    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
-    a_portion |= b;
-    update_flags(a_portion);
-    if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
-    else *a &= 0;
-    *a |= a_portion;
-}
-
-void xor(uint64_t* a, uint64_t b, size_t portion)
-{
-    uint64_t a_portion = *a & (uint64_t)pow(2, portion)-1;
-    a_portion ^= b & (uint64_t)pow(2, portion)-1;
-    update_flags(a_portion);
-    if (portion != 64) *a = *a & ((uint64_t)pow(2, portion)-1) << portion;
-    else *a &= 0;
-    *a |= a_portion;
-}
+STDOP_C_BUILTIN(add, +);
+STDOP_C_BUILTIN(sub, -);
+STDOP_C_BUILTIN(mul, *);
+STDOP_C_BUILTIN(udiv, /);
+STDOP_C_BUILTIN(and, &);
+STDOP_C_BUILTIN(or, |);
+STDOP_C_BUILTIN(xor, ^);
 
 void cmp(uint64_t* a, uint64_t b, size_t portion)
 {
