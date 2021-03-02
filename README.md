@@ -11,6 +11,8 @@ This project isn't very functional just yet, and mainly serves as a way of learn
 - `offset` is the location of the executable entry point (in bytes) in the file.
 - Pass in the `-i` flag to run in interactive mode.
 
+For reference, the starting offset in the provided binary `primes` is 3920.
+
 ### Interactive Mode
 - `step` either initializes the program or executes a single opcode (including prefixes)
 - `run` runs your code as if you were not in interactive mode but does not exit out

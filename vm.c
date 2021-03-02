@@ -172,10 +172,13 @@ int get_addr(uint8_t prefix, uint8_t modrm)
     int addr;
     uint8_t rm = modrm & 0b00000111;
     uint8_t mod = modrm & 0b11000000;
+    printf("RM is %d\n", rm);
     if ((prefix & 0b01000001) != 0b01000000) rm = (rm << 1) + 1;
     // See table at wiki.osdev.org/X86-64_Instruction_Encoding to understand why this madness exists
+    printf("RM is %d\n", rm);
     if (rm < 4 || (rm > 9 && rm < 12) || rm > 13) addr = reg[rm];
     else if (rm == 8 || rm == 12) {
+        printf("Reading SIB byte... like I should be.\n");
         uint8_t sib;
         fread(&sib, 1, 1, binary);
         reg[R_RIP]++;
@@ -239,7 +242,9 @@ void std_op(uint8_t prefix, void(*op)(uint64_t*, uint64_t, size_t), int variant)
         else {
             int addr;
             if (prefix == 0x66) addr = get_addr_16bit(modrm);
-            else addr = get_addr(prefix, modrm);
+            else {
+	      addr = get_addr(prefix, modrm);
+	    }
             if (variant == 0) (*op)(&memory[addr], reg[modrm & 0b00111000], portion);
             else if (variant == 1) (*op)(&memory[addr], reg[modrm & 0b00111000], portion); 
             else if (variant == 2) (*op)(&reg[modrm & 0b00111000], memory[addr], portion);
