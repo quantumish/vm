@@ -4,6 +4,10 @@
 #include <assert.h>
 #include <math.h>
 
+#ifndef __GNUC__
+#error "GCC required for binary literals."
+#endif
+
 enum {
 	R_AX = 0b000,
 	R_CX = 0b001,
@@ -14,6 +18,7 @@ enum {
 	R_SI = 0b110,
 	R_DI = 0b111,
 	R_IP,
+	R_FLAGS,
 	R_COUNT
 };
 
@@ -43,11 +48,11 @@ typedef struct op_args {
 
 modrm_t parse_modrm()
 {
-	uint8_t modrm = memory[regs[R_IP]];
+	uint8_t modrm = *(uint8_t*)regs[R_IP];
 	regs[R_IP]++;
 	modrm_t parsed =  {
-		.mod = modrm & 0b11000000,
-		.reg = modrm & 0b00111000,
+		.mod = (modrm & 0b11000000) >> 6,
+		.reg = (modrm & 0b00111000) >> 3,
 		.rm  = modrm & 0b00000111,
 	};
 	assert(parsed.mod <= 0b11);
@@ -58,11 +63,11 @@ modrm_t parse_modrm()
 
 sib_t parse_sib()
 {
-	uint8_t sib = memory[regs[R_IP]];
+	uint8_t sib = *(uint8_t*)regs[R_IP];
 	regs[R_IP]++;
 	sib_t parsed =  {
-		.scale = sib & 0b11000000,
-		.index = sib & 0b00111000,
+		.scale = (sib & 0b11000000) >> 6,
+		.index = (sib & 0b00111000) >> 3,
 		.base  = pow(2, sib & 0b00000111),
 	};
 	assert(parsed.scale == 1 || parsed.scale == 2 ||
@@ -150,4 +155,24 @@ op_args_t get_args()
 		args.arg1 = &regs[modrm.reg];
 		args.arg2 = get_addr(modrm);
 	}
+	return args;
+}
+
+// TODO: Questionable
+void add(op_args_t args)
+{
+	*(uint64_t*)args.arg1 += *(uint64_t*)args.arg2;
+}
+
+int main()
+{
+	regs[R_DX] = 2;
+	regs[R_AX] = 3;
+	memory[0] = 0x01;
+	memory[1] = 0xd0;
+	regs[R_IP] = (uint64_t)&memory[0];
+	regs[R_IP]++;
+	add(get_args());
+	printf("%ld", regs[R_DX]);
+	return 0;
 }
