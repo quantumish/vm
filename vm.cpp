@@ -3,6 +3,8 @@
 #include <cassert>
 #include <iostream>
 #include <variant>
+#include <random>
+#include <ctime>   
 
 #ifndef __GNUC__
 #error "GCC required for binary literals."
@@ -38,10 +40,49 @@ struct sib_t {
     uint8_t base;
 };
 
-template<typename A, typename B>
+struct u8_ref {uint8_t& ref;};
+struct u16_ref {uint16_t& ref;};
+struct u32_ref {uint32_t& ref;};
+struct u64_ref {uint64_t& ref;};
+using value = std::variant<u8_ref, u16_ref, u32_ref, u64_ref>;
+
+template<class... Ts> struct overload : Ts... { using Ts::operator()...; };
+
+// value opaque_func() {
+//     float r = (float)rand()/(float)RAND_MAX;
+//     std::cout << r << '\n';
+//     if (r < 0.25) {
+// 	return u8_ref{(uint8_t&) memory[1]};
+//     } else if (r < 0.50) {
+// 	return u16_ref{(uint16_t&) memory[2]};
+//     } else if (r < 0.75) {
+// 	return u32_ref{(uint32_t&) memory[3]};
+//     } else {
+// 	return u64_ref{(uint64_t&) memory[4]};
+//     }    
+// }
+
+// int test_function() {
+//     value v = opaque_func();
+//     std::visit(overload{
+// 	[](const u8_ref&) { std::cout << "u8\n"; },
+//         [](const u16_ref&) { std::cout << "u16\n"; },
+// 	[](const u32_ref&) { std::cout << "u32\n"; },
+// 	[](const u64_ref&) { std::cout << "u64\n"; },
+//     }, v);
+//     return 0;
+// }
+
+// int main() {
+//     srand(time(NULL));
+//     for (int i = 0; i < 5; i++) {
+// 	test_function();
+//     }    
+// }
+
 struct op_args_t {
-    A& arg1;
-    B& arg2;    
+    value arg1;
+    value arg2;    
 };
 
 modrm_t parse_modrm() {
@@ -125,24 +166,29 @@ uint8_t* get_addr(modrm_t modrm)
 op_args_t get_args_prefix(uint8_t prefix) {    
     modrm_t modrm = parse_modrm();
     if (modrm.mod == 0b11) {
-        return {
-	    .arg1 = regs[modrm.reg],
-	    .arg2 = regs[modrm.rm],
+	return {
+	    .arg1 = u64_ref{regs[modrm.reg]},
+	    .arg2 = u64_ref{regs[modrm.rm]},
 	};
-	return args;
     }
-    // else {
-    // 	args.arg1 = &regs[modrm.reg];
-    // 	args.arg2 = get_addr(modrm);
-    // 	return args;
-    // }
+    else {
+        return {
+	    .arg1 = u64_ref{regs[modrm.reg]},
+	    .arg2 = u8_ref{*get_addr(modrm)},
+	};
+    }
 }
 #define get_args() get_args_prefix(0x00)
 
 // // TODO: Questionable
-// template <typename T>
 // void add(op_args_t args) {
-//     *reinterpret_cast<T*>(args.arg1) += *reinterpret_cast<T*>(args.arg2);
+//     std::visit(overload{
+// 	[](const u8_ref&) { std::cout << "u8\n"; },
+//         [](const u16_ref&) { std::cout << "u16\n"; },
+// 	[](const u32_ref&) { std::cout << "u32\n"; },
+// 	[](const u64_ref&) { std::cout << "u64\n"; },
+//     }, v);
+//     args.arg1 += args.arg2;
 // }
 
 int main() {
@@ -152,7 +198,7 @@ int main() {
     memory[1] = 0xd0;
     regs[R_IP] = (uint64_t)&memory[0];
     regs[R_IP]++;   
-    // add<uint64_t>(get_args());
+    add<uint64_t>(get_args());
     std::cout << regs[R_DX] << "\n";
     return 0;
 }
