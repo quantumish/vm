@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cassert>
 #include <iostream>
+#include <variant>
 
 #ifndef __GNUC__
 #error "GCC required for binary literals."
@@ -37,12 +38,10 @@ struct sib_t {
     uint8_t base;
 };
 
+template<typename A, typename B>
 struct op_args_t {
-    void* arg1;
-    void* arg2;
-    void* arg3;
-    void* arg4;
-    size_t len;
+    A& arg1;
+    B& arg2;    
 };
 
 modrm_t parse_modrm() {
@@ -123,27 +122,28 @@ uint8_t* get_addr(modrm_t modrm)
 // Read a ModR/M byte and get operands.
 // Can read extra bytes in case of immediate or SIB byte.
 // @returns struct containing arguments to opcode.
-op_args_t get_args_prefix(uint8_t prefix) {
-    op_args_t args;
+op_args_t get_args_prefix(uint8_t prefix) {    
     modrm_t modrm = parse_modrm();
     if (modrm.mod == 0b11) {
-	args.arg1 = &regs[modrm.reg];
-	args.arg2 = &regs[modrm.rm];
+        return {
+	    .arg1 = regs[modrm.reg],
+	    .arg2 = regs[modrm.rm],
+	};
 	return args;
     }
-    else {
-	args.arg1 = &regs[modrm.reg];
-	args.arg2 = get_addr(modrm);
-    }
-    return args;
+    // else {
+    // 	args.arg1 = &regs[modrm.reg];
+    // 	args.arg2 = get_addr(modrm);
+    // 	return args;
+    // }
 }
 #define get_args() get_args_prefix(0x00)
 
-// TODO: Questionable
-template <typename T>
-void add(op_args_t args) {
-    *reinterpret_cast<T*>(args.arg1) += *reinterpret_cast<T*>(args.arg2);
-}
+// // TODO: Questionable
+// template <typename T>
+// void add(op_args_t args) {
+//     *reinterpret_cast<T*>(args.arg1) += *reinterpret_cast<T*>(args.arg2);
+// }
 
 int main() {
     regs[R_DX] = 2;
@@ -152,7 +152,7 @@ int main() {
     memory[1] = 0xd0;
     regs[R_IP] = (uint64_t)&memory[0];
     regs[R_IP]++;   
-    add<uint64_t>(get_args());
+    // add<uint64_t>(get_args());
     std::cout << regs[R_DX] << "\n";
     return 0;
 }
