@@ -29,15 +29,22 @@ uint64_t regs[R_COUNT];
 uint8_t memory[UINT16_MAX+1];
 
 struct modrm_t {
-    uint8_t mod;
-    uint8_t reg;
-    uint8_t rm;
+    uint8_t mod: 2;
+    uint8_t reg: 3;
+    uint8_t rm: 3;
 };
 
 struct sib_t {
-    uint8_t scale;
-    uint8_t index;
-    uint8_t base;
+    uint8_t scale: 2;
+    uint8_t index: 3;
+    uint8_t base: 3;
+};
+
+struct rex_t {
+    uint8_t op_ext: 1;
+    uint8_t reg_ext: 1;
+    uint8_t sib_ext: 1;
+    uint8_t rm_ext: 1;
 };
 
 struct u8_ref {uint8_t& ref;};
@@ -47,38 +54,6 @@ struct u64_ref {uint64_t& ref;};
 using value = std::variant<u8_ref, u16_ref, u32_ref, u64_ref>;
 
 template<class... Ts> struct overload : Ts... { using Ts::operator()...; };
-
-// value opaque_func() {
-//     float r = (float)rand()/(float)RAND_MAX;
-//     std::cout << r << '\n';
-//     if (r < 0.25) {
-// 	return u8_ref{(uint8_t&) memory[1]};
-//     } else if (r < 0.50) {
-// 	return u16_ref{(uint16_t&) memory[2]};
-//     } else if (r < 0.75) {
-// 	return u32_ref{(uint32_t&) memory[3]};
-//     } else {
-// 	return u64_ref{(uint64_t&) memory[4]};
-//     }    
-// }
-
-// int test_function() {
-//     value v = opaque_func();
-//     std::visit(overload{
-// 	[](const u8_ref&) { std::cout << "u8\n"; },
-//         [](const u16_ref&) { std::cout << "u16\n"; },
-// 	[](const u32_ref&) { std::cout << "u32\n"; },
-// 	[](const u64_ref&) { std::cout << "u64\n"; },
-//     }, v);
-//     return 0;
-// }
-
-// int main() {
-//     srand(time(NULL));
-//     for (int i = 0; i < 5; i++) {
-// 	test_function();
-//     }    
-// }
 
 struct op_args_t {
     value arg1;
@@ -113,6 +88,16 @@ sib_t parse_sib() {
     return parsed;
 }
 
+rex_t parse_rex(uint8_t raw) {
+    assert((raw >> 4) == 0b0100);
+    return {
+	.op_ext = static_cast<uint8_t>(raw & 0b1000),
+	.reg_ext = static_cast<uint8_t>(raw & 0b0100),
+	.sib_ext = static_cast<uint8_t>(raw & 0b0010),
+	.rm_ext = static_cast<uint8_t>(raw & 0b0001),	
+    };
+}
+
 template<typename T>
 T read() {
     T val = *reinterpret_cast<T*>(regs[R_IP]);
@@ -120,7 +105,7 @@ T read() {
     return val;
 }
 
-uint8_t* get_sib_addr(modrm_t modrm, sib_t sib) {
+uint8_t* get_sib_addr(modrm_t modrm, sib_t sib, uint8_t prefix = 0x00) {
     uint8_t* addr = 0x0;
     if (modrm.mod == 0b00) {
 	if (sib.base == 0b101 && sib.index == 0b100) {
@@ -142,9 +127,8 @@ uint8_t* get_sib_addr(modrm_t modrm, sib_t sib) {
     return addr;
 }
 
-uint8_t* get_addr(modrm_t modrm)
-{
-    uint8_t* addr = 0x0;
+uint8_t* get_addr(modrm_t modrm, uint8_t prefix = 0x00) {
+    uint8_t* addr;
     if (modrm.rm == 0b100) {
 	addr = get_sib_addr(modrm, parse_sib());
     } else if (modrm.rm == 0b101 && modrm.mod == 0b00) {
@@ -180,16 +164,21 @@ op_args_t get_args_prefix(uint8_t prefix) {
 }
 #define get_args() get_args_prefix(0x00)
 
-// // TODO: Questionable
-// void add(op_args_t args) {
-//     std::visit(overload{
-// 	[](const u8_ref&) { std::cout << "u8\n"; },
-//         [](const u16_ref&) { std::cout << "u16\n"; },
-// 	[](const u32_ref&) { std::cout << "u32\n"; },
-// 	[](const u64_ref&) { std::cout << "u64\n"; },
-//     }, v);
-//     args.arg1 += args.arg2;
-// }
+// TODO: Questionable
+void add(op_args_t args) {
+    // std::visit(overload{
+    // 	[](const u8_ref&) { std::cout << "u8\n"; },
+    //     [](const u16_ref&) { std::cout << "u16\n"; },
+    // 	[](const u32_ref&) { std::cout << "u32\n"; },
+    // 	[](const u64_ref&) { std::cout << "u64\n"; },
+    // }, v);
+    args.arg1 += args.arg2;
+}
+
+
+
+ 
+ 
 
 int main() {
     regs[R_DX] = 2;
