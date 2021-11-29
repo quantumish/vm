@@ -4,7 +4,8 @@
 #include <iostream>
 #include <variant>
 #include <random>
-#include <ctime>   
+#include <ctime>
+#include <cstddef>
 
 #ifndef __GNUC__
 #error "GCC required for binary literals."
@@ -19,12 +20,20 @@ enum {
     R_BP = 0b101,
     R_SI = 0b110,
     R_DI = 0b111,
+    R_8  = 0b1000,
+    R_9  = 0b1001,
+    R_10 = 0b1010,
+    R_11 = 0b1011,
+    R_12 = 0b1100,
+    R_13 = 0b1101,
+    R_14 = 0b1110,
+    R_15 = 0b1111,
     R_IP,
     R_FLAGS,
     R_COUNT
 };
 
-const uint8_t MAX_REG = R_DI;
+const uint8_t MAX_REG = R_15;
 uint64_t regs[R_COUNT];
 uint8_t memory[UINT16_MAX+1];
 
@@ -57,7 +66,7 @@ template<class... Ts> struct overload : Ts... { using Ts::operator()...; };
 
 struct op_args_t {
     value arg1;
-    value arg2;    
+    value arg2;
 };
 
 modrm_t parse_modrm() {
@@ -94,7 +103,7 @@ rex_t parse_rex(uint8_t raw) {
 	.op_ext = static_cast<uint8_t>(raw & 0b1000),
 	.reg_ext = static_cast<uint8_t>(raw & 0b0100),
 	.sib_ext = static_cast<uint8_t>(raw & 0b0010),
-	.rm_ext = static_cast<uint8_t>(raw & 0b0001),	
+	.rm_ext = static_cast<uint8_t>(raw & 0b0001),
     };
 }
 
@@ -127,27 +136,29 @@ uint8_t* get_sib_addr(modrm_t modrm, sib_t sib, uint8_t prefix = 0x00) {
     return addr;
 }
 
-uint8_t* get_addr(modrm_t modrm, uint8_t prefix = 0x00) {
-    uint8_t* addr;
+std::byte* get_addr(modrm_t modrm, rex_t rex = {0}) {
+    std::byte* addr;
+    uint8_t true_modrm = modrm.rm + (0b1000 * rex.reg_ext);
     if (modrm.rm == 0b100) {
 	addr = get_sib_addr(modrm, parse_sib());
     } else if (modrm.rm == 0b101 && modrm.mod == 0b00) {
 	// TODO Look into exact behavior of RIP-based indirect addressing
-	addr = (uint8_t*)regs[R_IP];
+	addr = (std::byte*)regs[R_IP];
 	addr += read<uint32_t>();
 	return addr;
     } else {
-	addr = (uint8_t*)regs[modrm.rm];
+	addr = (std::byte*)regs[true_modrm];
     }
     if (modrm.mod == 0b01) addr += read<uint8_t>();
-    else addr += read<uint32_t>();
+    else if (modrm.mod == 0b10) addr += read<uint32_t>();
     return addr;
 }
+
 
 // Read a ModR/M byte and get operands.
 // Can read extra bytes in case of immediate or SIB byte.
 // @returns struct containing arguments to opcode.
-op_args_t get_args_prefix(uint8_t prefix) {    
+op_args_t get_args_prefix(uint8_t prefix) {
     modrm_t modrm = parse_modrm();
     if (modrm.mod == 0b11) {
 	return {
@@ -156,7 +167,7 @@ op_args_t get_args_prefix(uint8_t prefix) {
 	};
     }
     else {
-        return {
+	return {
 	    .arg1 = u64_ref{regs[modrm.reg]},
 	    .arg2 = u8_ref{*get_addr(modrm)},
 	};
@@ -164,21 +175,16 @@ op_args_t get_args_prefix(uint8_t prefix) {
 }
 #define get_args() get_args_prefix(0x00)
 
-// TODO: Questionable
-void add(op_args_t args) {
-    // std::visit(overload{
-    // 	[](const u8_ref&) { std::cout << "u8\n"; },
-    //     [](const u16_ref&) { std::cout << "u16\n"; },
-    // 	[](const u32_ref&) { std::cout << "u32\n"; },
-    // 	[](const u64_ref&) { std::cout << "u64\n"; },
-    // }, v);
-    args.arg1 += args.arg2;
-}
-
-
-
- 
- 
+// // TODO: Questionable
+// void add(op_args_t args) {
+//     // std::visit(overload{
+//     //	[](const u8_ref&) { std::cout << "u8\n"; },
+//     //     [](const u16_ref&) { std::cout << "u16\n"; },
+//     //	[](const u32_ref&) { std::cout << "u32\n"; },
+//     //	[](const u64_ref&) { std::cout << "u64\n"; },
+//     // }, v);
+//     args.arg1 += args.arg2;
+// }
 
 int main() {
     regs[R_DX] = 2;
@@ -186,8 +192,8 @@ int main() {
     memory[0] = 0x01;
     memory[1] = 0xd0;
     regs[R_IP] = (uint64_t)&memory[0];
-    regs[R_IP]++;   
-    add<uint64_t>(get_args());
+    regs[R_IP]++;
+    // add<uint64_t>(get_args());
     std::cout << regs[R_DX] << "\n";
     return 0;
 }
